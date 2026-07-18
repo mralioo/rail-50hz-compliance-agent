@@ -13,12 +13,12 @@ store in Cognee memory → chat over it** — and document every step.
 | 1 | Recon: dataset census, env check, converter options, Cognee API | — | ✅ |
 | 2 | Build DWG→DXF converter (LibreDWG `dwg2dxf`) | `~/.local/bin/dwg2dxf` | ✅ |
 | 3 | Add `dwg2dxf` engine to the ingestion converter | `backend/app/ingestion/converter.py` | ✅ |
-| 4 | Batch ingest script: convert + extract + refine each file | `backend/scripts/ingest_dataset.py` | ⬜ |
-| 5 | Per-file summary via OpenAI | `backend/app/agent/summarizer.py` | ⬜ |
-| 6 | Store refined data + summaries in Cognee | `backend/app/memory/cognee_store.py` | ⬜ |
-| 7 | Chat over the memory (`cognee.recall`) | `backend/scripts/memory_chat.py` | ⬜ |
-| 8 | Update `.env.example` with LLM/Cognee variables | `backend/.env.example` | ⬜ |
-| 9 | Run against the dataset, record results here | this file §5 | ⬜ |
+| 4 | Batch ingest script: convert + extract + refine each file | `backend/scripts/ingest_dataset.py` | ⬜ (superseded: dataset/test_dwg dropped in favor of `data/samples/DB/`, see §5.4) |
+| 5 | Per-file summary via OpenAI | `backend/app/agent/summarizer.py` | ✅ (module ready; used on demand) |
+| 6 | Cognee memory bridge + guideline seeding | `backend/app/memory/cognee_store.py`, `scripts/seed_memory.py` | ✅ (see §5.6 and UX_AND_MEMORY.md §3) |
+| 7 | Recall wired into agents (chat + describer) | `backend/app/agent/client.py`, `analyzer.py` | ✅ |
+| 8 | Update `.env.example` with LLM/Cognee variables | `backend/.env.example` | ✅ |
+| 9 | Run against the dataset, record results here | this file §5 | ✅ (per-version smoke test §5.2; full-corpus batch dropped with the dataset) |
 
 ## 2. Findings — Reconnaissance
 
@@ -188,7 +188,15 @@ plan replaces it as the reference real-world input.
   Kreuzungsplan now yields two warnings (add the annotations), while the
   injected-violation sample still yields three `non_compliant` findings.
 
-### 5.5 OpenAI compliance agent (2026-07-18)
+### 5.5 Cognee memory in production use (2026-07-18)
+
+`COGNEE_ENABLED=true` + seeding via `scripts/seed_memory.py` (regulation
+corpus ingested OK). `cognee_store.recall()` verified: returns the 150 mm
+bending-radius rule; chat answers now cite guideline memory. Recall latency
+~15–25 s per query (LLM-routed) — timeout raised to 30 s; caching is the
+next optimization. Full integration details: UX_AND_MEMORY.md §3.
+
+### 5.6 OpenAI compliance agent (2026-07-18)
 
 `AGENT_MODE=openai` added and verified end-to-end on the live server: the
 GPT agent (gpt-4o-mini) flags all three injected violations of the sample

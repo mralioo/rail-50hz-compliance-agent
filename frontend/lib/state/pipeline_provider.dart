@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/config.dart';
 import '../models/job.dart';
+import 'locate_provider.dart';
 
 /// Drives the upload -> poll -> ready lifecycle shown in the status bar.
 class PipelineState {
@@ -32,6 +33,7 @@ class PipelineNotifier extends Notifier<PipelineState> {
 
   Future<void> processFile(String path, String filename) async {
     _pollTimer?.cancel();
+    ref.read(locateProvider.notifier).clear(); // stale highlights off
     state = const PipelineState(uploading: true);
     try {
       final job = await ref.read(apiClientProvider).uploadFile(path, filename);

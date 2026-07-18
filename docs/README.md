@@ -9,6 +9,11 @@
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Local setup, environment variables, DWG converter engines (LibreDWG/ODA), Docker, Cloud Run, Vertex AI mode |
 | [DATASET_INGESTION.md](DATASET_INGESTION.md) | DWG dataset processing: converter build, extraction findings, OpenAI summaries, Cognee memory (plan + run results) |
 | [LOCAL_SANDBOX_SPEC.md](LOCAL_SANDBOX_SPEC.md) | Saved spec note ("option A"): local-only sandbox blueprint — zoomable InteractiveViewer canvas, 3-color layer scheme |
+| [FEATURE_2_REPORT.md](FEATURE_2_REPORT.md) | Feature 2 implementation report: spec→code mapping, semantic layer colors, zoom/pan canvas, test guide |
+| [CAD_ENGINE_EVALUATION.md](CAD_ENGINE_EVALUATION.md) | Open CASCADE (OCCT) feasibility study — rejected for 2D DXF/DWG, kept on the 3D roadmap |
+| [LOCATOR_AGENT.md](LOCATOR_AGENT.md) | Locator agent: "where is X?" chat queries highlighted as boxes on the render canvas — design, API, verified results |
+| [ANALYSIS_AGENT.md](ANALYSIS_AGENT.md) | Analysis agent: per-finding overviews, show/hide boxes, click-to-select, on-demand AI descriptions (token-frugal) |
+| [UX_AND_MEMORY.md](UX_AND_MEMORY.md) | Search history, Cognee guideline memory + per-agent prompts, Plan Copilot rename, layer filter, quick guide |
 
 **New here?** Read [ARCHITECTURE.md](ARCHITECTURE.md) first, then follow the
 Quickstart in the [root README](../README.md).

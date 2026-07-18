@@ -111,6 +111,49 @@ Response when `ready` (abbreviated):
 
 ---
 
+### `GET /api/v1/searches`
+
+Locator search history (SQLite-backed), newest first:
+`[{ts, job_id, filename, query, hit_count}]`. `?limit=20`.
+
+---
+
+### `GET /api/v1/jobs/{job_id}/render`
+
+Supports `?layers=NameA,NameB` — server-side re-render of only those layers
+(cached; same world window as the base render, so overlays stay aligned).
+
+Server-side PNG rendering of the plan (`image/png`, ~2600 px wide), produced
+during the `extracting` stage by ezdxf's drawing add-on. Unlike the vector
+payload, the render **includes block-reference symbols** (trees, signals,
+hatches, dimensions). **404** while the pipeline hasn't reached extraction,
+if rendering failed (best-effort), or for unknown job ids.
+
+```bash
+curl -o plan.png localhost:8000/api/v1/jobs/<job_id>/render
+```
+
+---
+
+### `POST /api/v1/jobs/{job_id}/locate`
+
+Locator agent: resolves a natural-language query ("where is the
+Betonschalthaus?") to plan regions. Returns hits with world-coordinate and
+normalized render-image bounding boxes; the frontend draws them as highlight
+overlays. **409** until extraction finishes. Full design:
+[LOCATOR_AGENT.md](LOCATOR_AGENT.md).
+
+---
+
+### `POST /api/v1/jobs/{job_id}/hits/analyze` · `POST /api/v1/jobs/{job_id}/hits/describe`
+
+Analysis agent on locator hits: `analyze` returns deterministic per-region
+overviews (batched, no LLM); `describe` writes a short AI description of one
+hit — called only on user click to conserve tokens. Design:
+[ANALYSIS_AGENT.md](ANALYSIS_AGENT.md).
+
+---
+
 ### `POST /api/v1/jobs/{job_id}/chat`
 
 Ask the agent about a processed plan. Replies are grounded in the job's

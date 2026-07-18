@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     openai_summary_model: str = "gpt-4o-mini"
 
+    llm_api_key: str | None = None  # cognee's key (same OpenAI key)
+    cognee_enabled: bool = False
+
     work_dir: Path = BACKEND_ROOT / "workdir"
     regulations_dir: Path = BACKEND_ROOT / "data" / "regulations"
     prompts_dir: Path = BACKEND_ROOT / "app" / "agent" / "prompts"

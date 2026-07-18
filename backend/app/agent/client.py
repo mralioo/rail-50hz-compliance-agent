@@ -11,6 +11,12 @@ from collections import Counter
 
 from app.agent import rag
 from app.core.config import get_settings
+from app.memory import cognee_store
+
+
+def load_prompt(name: str, fallback: str = "") -> str:
+    path = get_settings().prompts_dir / name
+    return path.read_text(encoding="utf-8") if path.exists() else fallback
 from app.models.schemas import (
     ComplianceReport,
     DataLayerPayload,
@@ -222,10 +228,12 @@ class OpenAIAgentClient(AgentClient):
                 f"Plan layers: {', '.join(payload.layers)}; "
                 f"metrics: {'; '.join(f'{m.name}={m.value:g}{m.unit}' for m in payload.metrics[:30])}"
             )
+        if memory := cognee_store.recall(message):
+            context.append("Guideline memory:\n" + "\n".join(memory))
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
-                {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+                {"role": "system", "content": load_prompt("chat.md", CHAT_SYSTEM_PROMPT)},
                 {"role": "user", "content": "\n\n".join(context) + f"\n\nEngineer: {message}"},
             ],
         )
