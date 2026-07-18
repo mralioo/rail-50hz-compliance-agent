@@ -14,6 +14,9 @@ pandas>=2.2
 pytest>=8.0
 httpx>=0.27
 
+# --- OpenAI (AGENT_MODE=openai + dataset summaries) ---
+openai>=1.40
+
 # --- GCP / Vertex AI (only needed when AGENT_MODE=vertex) ---
 # google-genai>=1.0
 # google-cloud-storage>=2.16

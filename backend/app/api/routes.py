@@ -11,7 +11,9 @@ router = APIRouter(prefix="/api/v1")
 
 @router.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    from app.core.config import get_settings
+
+    return {"status": "ok", "agent_mode": get_settings().agent_mode}
 
 
 @router.post("/jobs", response_model=Job)

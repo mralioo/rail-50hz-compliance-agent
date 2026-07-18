@@ -14,7 +14,7 @@ backend/
 │   ├── api/routes.py         /api/v1 endpoints
 │   ├── ingestion/
 │   │   ├── storage.py        save_upload(): stages files under workdir/<job_id>/
-│   │   └── converter.py      ensure_dxf(): DWG→DXF via ODA, DXF passthrough
+│   │   └── converter.py      ensure_dxf(): dual-engine DWG→DXF (LibreDWG dwg2dxf / ODA), DXF passthrough
 │   ├── extraction/
 │   │   ├── dxf_parser.py     parse_dxf(): entities → Geometry/TextItem
 │   │   └── geometry.py       compute_metrics() + compute_bounds()
@@ -35,10 +35,13 @@ backend/
 `run_pipeline(job, source_path)` runs as a FastAPI background task and updates
 the shared `job_store` after every stage, so polling clients see progress:
 
-1. **`converting`** — `ensure_dxf()`. `.dxf` returns unchanged; `.dwg`
-   shells out to the ODA File Converter
-   (`ODAFileConverter <in_dir> <out_dir> ACAD2018 DXF 0 1 <file>`).
-   Missing `ODA_CONVERTER_PATH` raises a `ConversionError` with a hint.
+1. **`converting`** — `ensure_dxf()`. `.dxf` returns unchanged; `.dwg` is
+   converted by the first available engine: LibreDWG **`dwg2dxf`**
+   (auto-detected via `DWG2DXF_PATH` → `PATH` → `~/.local/bin`; invoked as
+   `dwg2dxf -y -o out.dxf in.dwg`), falling back to the **ODA File Converter**
+   when `ODA_CONVERTER_PATH` is set. Neither installed → `ConversionError`
+   with a setup hint. Build/verification notes: DEPLOYMENT.md §3,
+   DATASET_INGESTION.md §5.
 2. **`extracting`** — `parse_dxf()` + `compute_metrics()` + `compute_bounds()`
    assemble the `DataLayerPayload`.
 3. **`analyzing`** — `get_agent().analyze(payload)` returns the
@@ -88,6 +91,27 @@ Deterministic rule engine against `rag.load_rules()`:
 
 `chat()` echoes the current findings and appends the best-matching regulation
 excerpt from `rag.retrieve()`.
+
+### `OpenAIAgentClient` (`AGENT_MODE=openai`)
+- Requires `OPENAI_API_KEY`; model via `OPENAI_MODEL` (default `gpt-4o-mini`)
+- Same prompt strategy as Vertex: `prompts/instruction.md` as system prompt +
+  retrieved regulation sections + CAD data, with
+  `response_format=json_object` validated into `ComplianceReport`
+- `chat()` grounds replies in the report, plan metrics and regulation excerpts
+
+### LLM prompt hygiene (both LLM clients)
+
+- **`payload_digest()`** — real plans produce payloads far too large for a
+  prompt (Kreuzungsplan: 243 KB JSON ≈ 62k tokens), so `analyze()` sends a
+  compact digest: per-layer aggregated metrics + every annotation with
+  coordinates. The mock agent still receives the full typed payload.
+- **Missing data ≠ violation** — `instruction.md` mandates `warning` with
+  `actual="not specified in plan"` for absent parameters; `non_compliant` is
+  reserved for values that conflict with a regulation.
+- **`CHAT_SYSTEM_PROMPT` + `ensure_prose()`** — chat uses a conversational
+  prompt (the JSON-output contract applies to `analyze()` only), and every
+  reply is sanitized server-side (JSON flattened, markdown stripped) so the
+  Flutter chat bubble always gets plain text.
 
 ### `VertexAgentClient` (`AGENT_MODE=vertex`)
 - Requires `GCP_PROJECT` (+ ADC credentials) and `google-genai`

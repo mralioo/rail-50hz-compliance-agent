@@ -8,8 +8,10 @@ setup: ## create venv + install backend deps
 	python3 -m venv $(VENV)
 	$(VENV)/bin/pip install -r backend/requirements.txt
 
-backend: ## run the FastAPI gateway on :8000
-	cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000
+PORT ?= 8000
+
+backend: ## run the FastAPI gateway (override port: make backend PORT=8001)
+	cd backend && .venv/bin/uvicorn app.main:app --reload --port $(PORT)
 
 sample: ## generate the demo DXF with injected violations
 	cd backend && .venv/bin/python scripts/make_sample_dxf.py

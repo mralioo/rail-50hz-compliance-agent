@@ -10,10 +10,12 @@ All schemas are defined in `backend/app/models/schemas.py` and mirrored in
 
 ### `GET /api/v1/health`
 
-Liveness probe.
+Liveness probe. Also reports the **active agent mode** — settings are cached at
+server start, so this is the quickest way to spot a server that predates an
+`.env` change.
 
 ```json
-{ "status": "ok" }
+{ "status": "ok", "agent_mode": "openai" }
 ```
 
 ---
@@ -113,6 +115,10 @@ Response when `ready` (abbreviated):
 
 Ask the agent about a processed plan. Replies are grounded in the job's
 payload, its compliance report, and retrieved regulation excerpts.
+
+`reply` is guaranteed **plain text** (chat-UI safe): LLM agents use a
+conversational system prompt, and `ensure_prose()` server-side flattens any
+stray JSON and strips markdown markers before the reply leaves the API.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/jobs/0c91e588c5b4/chat \
