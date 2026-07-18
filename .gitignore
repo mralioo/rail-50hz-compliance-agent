@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -216,3 +216,26 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ============================================================
+# Rail50Hz project rules (frontend/ has its own Flutter .gitignore)
+# ============================================================
+
+# Runtime artifacts (upload staging, DWG->DXF conversion output)
+workdir/
+
+# Local scratch notes / planning docs
+/tmp/
+
+# CAD test corpus (~96 MB of .dwg binaries) — keep out of the public repo;
+# use `make sample` to generate the committed demo file instead
+/dataset/
+
+# Editors & OS
+.vscode/
+.idea/
+*.iml
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json*

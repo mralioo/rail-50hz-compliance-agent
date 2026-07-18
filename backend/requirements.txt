@@ -1,0 +1,19 @@
+# --- API gateway ---
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pydantic>=2.7
+pydantic-settings>=2.3
+
+# --- CAD extraction pipeline ---
+ezdxf>=1.3
+shapely>=2.0
+pandas>=2.2
+
+# --- Testing ---
+pytest>=8.0
+httpx>=0.27
+
+# --- GCP / Vertex AI (only needed when AGENT_MODE=vertex) ---
+# google-genai>=1.0
+# google-cloud-storage>=2.16

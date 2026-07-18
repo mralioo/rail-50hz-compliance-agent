@@ -1,0 +1,26 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - deployment/Dockerfile
+      - -t
+      - europe-west3-docker.pkg.dev/$PROJECT_ID/rail50hz/backend:$SHORT_SHA
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - europe-west3-docker.pkg.dev/$PROJECT_ID/rail50hz/backend:$SHORT_SHA
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - rail50hz-backend
+      - --image=europe-west3-docker.pkg.dev/$PROJECT_ID/rail50hz/backend:$SHORT_SHA
+      - --region=europe-west3
+      - --allow-unauthenticated
+      - --set-env-vars=AGENT_MODE=vertex,GCP_PROJECT=$PROJECT_ID
+
+images:
+  - europe-west3-docker.pkg.dev/$PROJECT_ID/rail50hz/backend:$SHORT_SHA
