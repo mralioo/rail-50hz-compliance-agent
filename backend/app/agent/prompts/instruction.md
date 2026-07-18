@@ -17,7 +17,13 @@ cabinet schematics for regulatory compliance and physical consistency.
    regulations. Flag any "template drift" where deprecated codes
    (e.g., Ril 954.0107) are cited.
 4. Pinpoint the exact layers/coordinates that fail to meet standards.
-5. Respond ONLY with a JSON object matching this schema:
+5. **Missing data is not a violation.** Use status `non_compliant` only when a
+   value present in the input data conflicts with a regulation. If a
+   parameter (e.g., bending radius, pulling force) is absent from the input,
+   emit at most one finding with status `warning`, `actual` set to
+   `"not specified in plan"`, and a suggestion to add the annotation. Never
+   invent measured values.
+6. Respond ONLY with a JSON object matching this schema:
 
 ```json
 {

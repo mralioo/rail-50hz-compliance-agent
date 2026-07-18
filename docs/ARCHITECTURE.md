@@ -119,7 +119,7 @@ surfaces it in the status bar instead of hanging.
 | Decision | Rationale |
 | :--- | :--- |
 | **Mock-first agent** (`AGENT_MODE=mock` default) | Demo never dies on missing GCP credentials; deterministic output for tests; Vertex adapter is a drop-in behind the same `AgentClient` interface |
-| **DXF passthrough** | ODA File Converter is proprietary and Linux-fiddly; only raw `.dwg` needs it, so the pipeline is fully testable without it |
+| **DXF passthrough + dual-engine DWG conversion** | `.dxf` needs no converter, so the pipeline is fully testable standalone. For `.dwg`, LibreDWG's open-source `dwg2dxf` (built from source, verified on AutoCAD 2000–2018 files) is preferred; the proprietary ODA File Converter remains an optional higher-fidelity fallback |
 | **Schema mirroring, not codegen** | `schemas.py` ↔ `frontend/lib/models/job.dart` are hand-mirrored 1:1. For a POC this beats an OpenAPI codegen toolchain; swap in `openapi-generator` when the contract stabilizes |
 | **In-memory `JobStore`** | Single-process dev / single Cloud Run instance is enough for the POC; the store is one class with a lock — swap for Firestore/Redis to scale out |
 | **Machine-readable limits inside regulation markdown** | One file serves both the deterministic mock validator (`load_rules()`) and LLM grounding (`retrieve()`); adding a regulation = dropping a `.md` file |
@@ -133,7 +133,9 @@ surfaces it in the status bar instead of hanging.
 | Job persistence | In-memory dict | Firestore / Redis; make `JobStore` an interface |
 | File storage | Local `workdir/` | GCS bucket (`ingestion/storage.py` is the seam) |
 | Regulation retrieval | Keyword scoring over markdown | Vertex AI Search / embedding index (`agent/rag.py` is the seam) |
-| DWG conversion | ODA CLI subprocess in-request | Dedicated converter service or Cloud Run job queue |
+| DWG conversion | dwg2dxf/ODA CLI subprocess in-request (local only — not in the Cloud Run image yet) | Compile LibreDWG into the Docker image (multi-stage build); later a dedicated converter service or job queue |
+| Block-nested text | Not extracted (`INSERT`/`ATTRIB` not traversed) — real-world plans lose annotations | Explode block references in `dxf_parser.py`; add `ARC`/legacy `POLYLINE` |
+| Plan memory | — (per-job context only) | Cognee memory layer over the dataset (in progress — see DATASET_INGESTION.md) |
 | Agent | Single-shot analyze + chat | Multimodal (plan renders as images), tool-use for coordinate queries |
 | Auth | None (hackathon) | IAP / Firebase Auth in front of Cloud Run |
 | Contract sync | Manual Dart mirror | OpenAPI codegen from FastAPI's `/openapi.json` |

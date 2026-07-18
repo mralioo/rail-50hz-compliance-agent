@@ -15,6 +15,42 @@ make frontend              # flutter run -d linux
 
 All Make targets: `setup · backend · sample · test · frontend · docker`.
 
+### 1.1 Test a new (raw) DWG file end-to-end
+
+DWG upload works out of the box once `dwg2dxf` is installed (see §3 — on this
+machine it already is, at `~/.local/bin/dwg2dxf`, and the backend auto-detects
+it there; no `.env` entry needed).
+
+```bash
+# terminal 1 — backend
+make backend                     # http://localhost:8000
+
+# terminal 2 — frontend
+make frontend                    # Flutter desktop app
+```
+
+Then in the app: **drop any `.dwg` file** (e.g. one from `dataset/test_dwg/`)
+onto the drop zone — or click it and browse. Watch the status bar walk
+through *Uploading → Converting (DWG → DXF) → Extracting Geometry →
+AI Compliance Analysis → Ready*; the canvas then renders the plan geometry,
+the bottom table fills with metrics, and the agent console answers questions
+about it.
+
+Without the frontend, the same test via curl:
+
+```bash
+curl -F "file=@dataset/test_dwg/e1gkwpmo.dwg" localhost:8000/api/v1/jobs
+# → {"id": "<job_id>", "status": "queued", ...}
+curl localhost:8000/api/v1/jobs/<job_id>      # poll until "status": "ready"
+```
+
+> Expectation for real-world plans: geometry renders, but many production DWGs
+> keep text inside block references (`INSERT`/`ATTRIB`), which the extractor
+> does not traverse yet — so annotations/citation findings may be empty for
+> now (see DATASET_INGESTION.md §5.2). The demo file
+> `backend/data/samples/sample_plan.dxf` always shows the full compliance
+> flow with 3 violations.
+
 ## 2. Configuration (`backend/.env`)
 
 Copy `backend/.env.example` → `backend/.env`. Everything is optional for
@@ -22,36 +58,63 @@ mock-mode local dev.
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `AGENT_MODE` | `mock` | `mock` = rule-based, credential-free · `vertex` = Vertex AI Gemini |
+| `AGENT_MODE` | `mock` | `mock` = rule-based, credential-free · `openai` = OpenAI API (needs `OPENAI_API_KEY`) · `vertex` = Vertex AI Gemini |
+| `OPENAI_MODEL` | `gpt-4o-mini` | model for the OpenAI compliance agent |
 | `GCP_PROJECT` | — | required when `AGENT_MODE=vertex` |
 | `VERTEX_LOCATION` | `europe-west3` | Vertex AI region |
 | `VERTEX_MODEL` | `gemini-2.5-flash` | model id |
-| `ODA_CONVERTER_PATH` | — | absolute path to the ODA File Converter binary; **only needed for `.dwg` uploads** — `.dxf` is processed directly |
+| `DWG2DXF_PATH` | auto-detected | LibreDWG `dwg2dxf` binary for `.dwg` uploads; found automatically on `PATH` or in `~/.local/bin` — set only for a custom location |
+| `ODA_CONVERTER_PATH` | — | ODA File Converter binary (optional alternative engine; used when `dwg2dxf` is absent) |
 | `WORK_DIR` | `backend/workdir` | upload/conversion staging (gitignored) |
+| `LLM_API_KEY` | — | OpenAI key **for Cognee memory** (dataset ingestion / memory chat) |
+| `OPENAI_API_KEY` | — | OpenAI key for the per-plan summarizer (set to the same key) |
+| `OPENAI_SUMMARY_MODEL` | `gpt-4o-mini` | model used for one-paragraph plan summaries |
 
 Settings are loaded once (`core/config.py`, cached); restart the server after
 changing `.env`.
 
-## 3. ODA File Converter (DWG support)
+## 3. DWG Support (DWG → DXF engines)
 
-`.dxf` files work out of the box. For raw `.dwg`:
+`.dxf` files work with no converter at all. For raw `.dwg`, the backend picks
+the first available engine in this order:
 
-1. Download the free **ODA File Converter** for your OS from
-   <https://www.opendesign.com/guestfiles/oda_file_converter>
-   (Linux: `.deb`/`.rpm`/AppImage).
-2. Install and locate the binary, e.g.
-   `/usr/bin/ODAFileConverter` or `~/Apps/ODAFileConverter.AppImage` (make it
-   executable).
-3. Set `ODA_CONVERTER_PATH=/path/to/ODAFileConverter` in `backend/.env`.
+### Engine A — LibreDWG `dwg2dxf` (default, open source) ✅ installed here
 
-The pipeline invokes it headlessly as
-`ODAFileConverter <in_dir> <out_dir> ACAD2018 DXF 0 1 <filename>` with a 120 s
-timeout. A missing binary fails the job with a clear hint instead of crashing
-the server.
+Built from the 0.14 source release (no Linux binaries are published and it is
+not in Ubuntu's apt). Reproduce on any Linux machine with gcc/make:
 
-> Note: inside the Cloud Run container ODA is **not** installed — the deployed
-> POC accepts `.dxf` only. Baking ODA into the image (or a dedicated converter
-> service) is a post-POC step; see ARCHITECTURE.md §5.
+```bash
+curl -sLO https://github.com/LibreDWG/libredwg/releases/download/0.14/libredwg-0.14.tar.xz
+tar xf libredwg-0.14.tar.xz && cd libredwg-0.14
+./configure --disable-bindings --disable-shared --prefix="$HOME/.local"
+make -j"$(nproc)" && make install        # → ~/.local/bin/dwg2dxf  (~2 min)
+```
+
+Auto-detection order: `DWG2DXF_PATH` env var → `dwg2dxf` on `PATH` →
+`~/.local/bin/dwg2dxf`. Invoked as `dwg2dxf -y -o <out.dxf> <in.dwg>` with a
+120 s timeout; non-zero exit with a valid output file is tolerated (LibreDWG
+warns on recoverable issues).
+
+**Verified against the project dataset:** all six DWG generations present in
+`dataset/test_dwg/` (AutoCAD 2000/AC1015 → 2018/AC1032) convert and then parse
+cleanly through the ezdxf extraction pipeline — details in
+DATASET_INGESTION.md §5.
+
+### Engine B — ODA File Converter (optional, higher fidelity)
+
+1. Download from <https://www.opendesign.com/guestfiles/oda_file_converter>
+   (manual license acceptance required).
+2. Set `ODA_CONVERTER_PATH=/path/to/ODAFileConverter` in `backend/.env`.
+
+Invoked headlessly as `ODAFileConverter <in_dir> <out_dir> ACAD2018 DXF 0 1
+<filename>`. Used only when `dwg2dxf` is not found.
+
+With neither engine installed, a `.dwg` job fails with a clear hint (the
+server keeps running and `.dxf` uploads still work).
+
+> Note: the Cloud Run image contains **neither** engine yet — the deployed POC
+> accepts `.dxf` only. Compiling LibreDWG into the Docker image is a
+> straightforward post-POC step (multi-stage build); see ARCHITECTURE.md §5.
 
 ## 4. Vertex AI Mode
 

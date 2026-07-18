@@ -75,6 +75,10 @@ make frontend         # flutter run -d linux
 #    - "Ril 954.0107" citation      → template drift (retired guideline)
 #    - R=90mm bending radius        → below the 150 mm minimum
 #    - 620 N pulling force          → above the 500 N maximum
+
+# 4. Raw DWG: with LibreDWG's dwg2dxf installed (docs/DEPLOYMENT.md §3),
+#    drop any .dwg file — e.g. from dataset/test_dwg/ — and the pipeline
+#    converts it automatically (verified on AutoCAD 2000–2018 files).
 ```
 
 Run tests with `make test`.
@@ -94,8 +98,11 @@ Copy `backend/.env.example` → `backend/.env`. Key switches:
 
 - `AGENT_MODE=mock` (default, no credentials) or `vertex` (Vertex AI Gemini;
   uncomment `google-genai` in `requirements.txt` and set `GCP_PROJECT`).
-- `ODA_CONVERTER_PATH` — only needed for raw `.dwg` uploads; `.dxf` works
-  out of the box.
+- DWG conversion — LibreDWG `dwg2dxf` is auto-detected (`PATH` /
+  `~/.local/bin` / `DWG2DXF_PATH`); the ODA File Converter
+  (`ODA_CONVERTER_PATH`) is an optional fallback. `.dxf` needs neither.
+- `LLM_API_KEY` / `OPENAI_API_KEY` — OpenAI key for the Cognee memory layer
+  and per-plan summaries (dataset ingestion; see docs/DATASET_INGESTION.md).
 
 Frontend targets a different backend via
 `flutter run --dart-define=API_BASE_URL=https://<cloud-run-url>`.
