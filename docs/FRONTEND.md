@@ -64,16 +64,34 @@ flowchart LR
 - **`chatProvider`** — ordered `List<ChatMessage>` (`role: user|agent`).
   Refuses politely when no job is `ready` yet; guards against double-sends.
 
+## Plan Viewer (`plan_viewer.dart`)
+
+The canvas area is a **Render / Vectors toggle** (SegmentedButton, top-right):
+
+- **Render** (default): the server-side PNG from `GET /jobs/{id}/render` —
+  full-fidelity ezdxf output including block symbols the extractor doesn't
+  traverse; zoomable via its own `InteractiveViewer`, with a graceful
+  fallback message when no render exists (404).
+- **Vectors**: the client-side `PlanCanvas` below — the extracted data layer,
+  color-classified per layer semantics.
+
 ## Canvas Rendering (`plan_canvas.dart`)
 
 `_PlanPainter` draws the raw `shapely`/`ezdxf` output — no backend-rendered
 image needed:
 
+- **Zoom & pan (feature 2):** the painter sits inside an `InteractiveViewer`
+  (0.1×–25× zoom, unbounded pan); double-tap resets the view via a
+  `TransformationController`
 - Scales world coordinates into the viewport using `payload.bounds`
   (uniform scale, 24 px margin) and **flips the Y axis** (CAD is Y-up,
   screen is Y-down)
 - Strokes polylines/lines as `Path`s, circles via `drawCircle`
-- Colors are assigned per layer from a fixed 6-color palette
+- **Semantic layer colors (feature 2):** `layerColor()` classifies real DB
+  layer names by keyword — cabling red, EEA/LST blue, Planung green,
+  Rückbau orange, Bestand/context grey, sheet furniture dimmed — with a
+  stable 6-color fallback for unknown layers (full table in
+  FEATURE_2_REPORT.md §2)
 - Plan annotations are drawn with `TextPainter` at their insert points
 
 New `Geometry.kind`s from the backend degrade gracefully: anything with ≥ 2

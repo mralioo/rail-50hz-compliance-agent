@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/job.dart';
 import '../../state/pipeline_provider.dart';
-import '../canvas/plan_canvas.dart';
+import '../canvas/plan_viewer.dart';
 import '../ingestion/file_drop_zone.dart';
 import '../ingestion/pipeline_status_bar.dart';
 
@@ -15,7 +15,7 @@ class WorkspacePanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pipeline = ref.watch(pipelineProvider);
-    final payload = pipeline.job?.payload;
+    final job = pipeline.job;
 
     return Column(
       children: [
@@ -23,8 +23,8 @@ class WorkspacePanel extends ConsumerWidget {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: payload != null
-                ? PlanCanvas(payload: payload)
+            child: job?.payload != null
+                ? PlanViewer(job: job!)
                 : const FileDropZone(),
           ),
         ),

@@ -17,11 +17,19 @@ backend/
 │   │   └── converter.py      ensure_dxf(): dual-engine DWG→DXF (LibreDWG dwg2dxf / ODA), DXF passthrough
 │   ├── extraction/
 │   │   ├── dxf_parser.py     parse_dxf(): entities → Geometry/TextItem
-│   │   └── geometry.py       compute_metrics() + compute_bounds()
+│   │   ├── geometry.py       compute_metrics() + compute_bounds()
+│   │   └── renderer.py       render_png(): ezdxf drawing add-on → PNG (incl. blocks)
 │   ├── agent/
-│   │   ├── client.py         AgentClient ABC, Mock + Vertex implementations
+│   │   ├── client.py         AgentClient ABC, Mock/OpenAI/Vertex + chat guards
+│   │   ├── locator.py        visual grounding: query → plan regions
+│   │   ├── analyzer.py       per-hit overview (local) + AI description (on click)
+│   │   ├── summarizer.py     one-paragraph plan summaries (OpenAI)
 │   │   ├── rag.py            load_rules() + retrieve() over data/regulations/
-│   │   └── prompts/instruction.md   LLM system prompt (JSON output schema)
+│   │   └── prompts/          per-agent system prompts: instruction.md (analyst),
+│   │                         chat.md (Plan Copilot), locator.md, describe.md
+│   ├── memory/
+│   │   ├── cognee_store.py   selective guideline recall (COGNEE_ENABLED)
+│   │   └── history.py        locator search history (SQLite in WORK_DIR)
 │   └── pipeline/orchestrator.py     JobStore + run_pipeline()
 ├── data/
 │   ├── regulations/          mock DB Ril corpus (see format below)
@@ -42,8 +50,10 @@ the shared `job_store` after every stage, so polling clients see progress:
    when `ODA_CONVERTER_PATH` is set. Neither installed → `ConversionError`
    with a setup hint. Build/verification notes: DEPLOYMENT.md §3,
    DATASET_INGESTION.md §5.
-2. **`extracting`** — `parse_dxf()` + `compute_metrics()` + `compute_bounds()`
-   assemble the `DataLayerPayload`.
+2. **`extracting`** — a best-effort `render_png()` writes
+   `workdir/<job_id>/render.png` (served by `GET /jobs/{id}/render`; render
+   failures never fail the job), then `parse_dxf()` + `compute_metrics()` +
+   `compute_bounds()` assemble the `DataLayerPayload`.
 3. **`analyzing`** — `get_agent().analyze(payload)` returns the
    `ComplianceReport`.
 4. **`ready`** — payload + report available. Any exception at any stage sets

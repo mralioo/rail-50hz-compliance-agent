@@ -92,3 +92,94 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+# --------------------------------------------------------------------------- #
+# Locator agent (visual grounding of chat queries on the plan)
+# --------------------------------------------------------------------------- #
+class LocateRequest(BaseModel):
+    query: str
+
+
+class LocateHit(BaseModel):
+    label: str
+    source: str  # "text" (annotation) | "layer"
+    confidence: float
+    layer: str | None = None  # originating DXF layer
+    anchor: tuple[float, float]  # world coordinates
+    world_bbox: tuple[float, float, float, float]  # min_x, min_y, max_x, max_y
+    # normalized [0..1] rect on the render image, y-down; None if no render
+    image_bbox: tuple[float, float, float, float] | None = None
+
+
+class LocateResponse(BaseModel):
+    query: str
+    terms: list[str]
+    hits: list[LocateHit]
+    render_size: tuple[int, int] | None = None  # px, for aspect-true overlays
+
+
+# --------------------------------------------------------------------------- #
+# Analysis agent (per-hit deep dive; AI description only on user click)
+# --------------------------------------------------------------------------- #
+class HitAnalysis(BaseModel):
+    """Deterministic overview of one located region — no LLM involved."""
+
+    label: str
+    layer: str | None = None
+    bbox_size: tuple[float, float]  # drawing units (w, h)
+    entity_count: int
+    entities_by_kind: dict[str, int]
+    layers: list[str]  # all layers present in the region
+    annotations: list[str]  # texts found in/near the region
+    metrics_summary: str
+
+
+class HitsAnalyzeRequest(BaseModel):
+    hits: list[LocateHit]
+
+
+class HitsAnalyzeResponse(BaseModel):
+    analyses: list[HitAnalysis]
+
+
+class HitDescribeRequest(BaseModel):
+    hit: LocateHit
+    analysis: HitAnalysis | None = None
+
+
+class HitDescribeResponse(BaseModel):
+    description: str
+
+
+# --------------------------------------------------------------------------- #
+# Draftsman agent (planner clicks points, agent draws elements as overlays)
+# --------------------------------------------------------------------------- #
+class DrawRequest(BaseModel):
+    instruction: str  # e.g. "draw the cable line NYY-J between the points"
+    points_image: list[tuple[float, float]]  # normalized [0..1] render coords, y-down
+
+
+class DrawnElement(BaseModel):
+    id: str
+    kind: str  # "cable_line" | "line" | ...
+    label: str
+    points_image: list[tuple[float, float]]
+    points_world: list[tuple[float, float]]
+    length: float  # drawing units (m by project convention)
+    note: str  # rule reminders / geometry facts
+
+
+class DrawResponse(BaseModel):
+    element: DrawnElement
+    reply: str  # chat-ready confirmation text
+
+
+class SearchRecord(BaseModel):
+    """One saved locator search (history)."""
+
+    ts: float
+    job_id: str
+    filename: str
+    query: str
+    hit_count: int

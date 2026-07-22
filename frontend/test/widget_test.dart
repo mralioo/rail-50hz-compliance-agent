@@ -13,7 +13,7 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: PlannerPlaygroundApp()));
 
     expect(find.text('Drop a .dwg / .dxf plan here'), findsOneWidget);
-    expect(find.text('Compliance Agent'), findsOneWidget);
+    expect(find.text('Plan Copilot'), findsOneWidget);
     expect(find.textContaining('Structured data layer'), findsOneWidget);
   });
 }

@@ -8,10 +8,16 @@ import uuid
 from pathlib import Path
 
 from app.agent.client import get_agent
+from app.core.config import get_settings
 from app.extraction.dxf_parser import parse_dxf
 from app.extraction.geometry import compute_bounds, compute_metrics
+from app.extraction.renderer import render_png
 from app.ingestion.converter import ensure_dxf
 from app.models.schemas import DataLayerPayload, Job, JobStatus
+
+
+def render_path_for(job_id: str) -> Path:
+    return get_settings().work_dir / job_id / "render.png"
 
 
 class JobStore:
@@ -45,6 +51,10 @@ def run_pipeline(job: Job, source_path: Path) -> None:
 
         job.status = JobStatus.EXTRACTING
         job_store.update(job)
+        try:  # render is best-effort; the data pipeline never fails because of it
+            render_png(dxf_path, render_path_for(job.id))
+        except Exception:
+            pass
         layers, geometries, texts = parse_dxf(dxf_path)
         job.payload = DataLayerPayload(
             source_file=job.filename,

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../state/locate_provider.dart';
 import '../../state/pipeline_provider.dart';
+import 'findings_panel.dart';
 
-/// Bottom panel: processed metadata (areas, run lengths, annotated parameters).
+/// Bottom panel: processed metadata (areas, run lengths, annotated
+/// parameters). When the locator agent has results, it switches to the
+/// findings deep-dive view instead.
 class DataTablePanel extends ConsumerWidget {
   const DataTablePanel({super.key});
 
@@ -17,6 +21,10 @@ class DataTablePanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final payload = ref.watch(pipelineProvider).job?.payload;
+
+    if (ref.watch(locateProvider) != null) {
+      return const FindingsPanel();
+    }
 
     if (payload == null) {
       return const Center(

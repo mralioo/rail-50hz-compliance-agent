@@ -68,6 +68,16 @@ class _FileDropZoneState extends ConsumerState<FileDropZone> {
                 const SizedBox(height: 4),
                 Text('or click to browse',
                     style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 16),
+                Text(
+                  'Try the demo: backend/data/samples/DB/Kreuzungsplan.dwg\n'
+                  'DWG is converted automatically · all AutoCAD versions 2000–2018',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: scheme.outline),
+                ),
               ],
             ),
           ),
