@@ -2,6 +2,7 @@
 
 | Document | Contents |
 | :--- | :--- |
+| [PROGRESS_REPORT.md](PROGRESS_REPORT.md) | **Start here for the product view:** full progress report — feature inventory, architecture, agentic system, CAD engine decision, gaps, roadmap |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design: components, data flow, sequence diagrams, design decisions, scaling path |
 | [API.md](API.md) | REST API reference with request/response examples and the full data contract |
 | [BACKEND.md](BACKEND.md) | Backend module guide: pipeline stages, extraction rules, agent modes, RAG corpus format, testing |
@@ -14,6 +15,7 @@
 | [LOCATOR_AGENT.md](LOCATOR_AGENT.md) | Locator agent: "where is X?" chat queries highlighted as boxes on the render canvas — design, API, verified results |
 | [ANALYSIS_AGENT.md](ANALYSIS_AGENT.md) | Analysis agent: per-finding overviews, show/hide boxes, click-to-select, on-demand AI descriptions (token-frugal) |
 | [UX_AND_MEMORY.md](UX_AND_MEMORY.md) | Search history, Cognee guideline memory + per-agent prompts, Plan Copilot rename, layer filter, quick guide |
+| [DRAFTSMAN_AGENT.md](DRAFTSMAN_AGENT.md) | Draftsman agent: click points on the canvas, copilot sketches cable lines as overlays with lengths + rule reminders |
 
 **New here?** Read [ARCHITECTURE.md](ARCHITECTURE.md) first, then follow the
 Quickstart in the [root README](../README.md).

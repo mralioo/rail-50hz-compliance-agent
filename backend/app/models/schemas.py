@@ -152,6 +152,29 @@ class HitDescribeResponse(BaseModel):
     description: str
 
 
+# --------------------------------------------------------------------------- #
+# Draftsman agent (planner clicks points, agent draws elements as overlays)
+# --------------------------------------------------------------------------- #
+class DrawRequest(BaseModel):
+    instruction: str  # e.g. "draw the cable line NYY-J between the points"
+    points_image: list[tuple[float, float]]  # normalized [0..1] render coords, y-down
+
+
+class DrawnElement(BaseModel):
+    id: str
+    kind: str  # "cable_line" | "line" | ...
+    label: str
+    points_image: list[tuple[float, float]]
+    points_world: list[tuple[float, float]]
+    length: float  # drawing units (m by project convention)
+    note: str  # rule reminders / geometry facts
+
+
+class DrawResponse(BaseModel):
+    element: DrawnElement
+    reply: str  # chat-ready confirmation text
+
+
 class SearchRecord(BaseModel):
     """One saved locator search (history)."""
 

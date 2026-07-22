@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config.dart';
+import '../../models/draft.dart';
 import '../../models/job.dart';
 import '../../models/locate.dart';
+import '../../state/draft_provider.dart';
 import '../../state/locate_provider.dart';
 import 'plan_canvas.dart';
 
@@ -73,7 +75,7 @@ class _PlanViewerState extends ConsumerState<PlanViewer> {
     super.dispose();
   }
 
-  Widget _buildRenderView(LocateSession? session) {
+  Widget _buildRenderView(LocateSession? session, DraftState draft) {
     final image = Image.network(
       _renderUrl,
       key: ValueKey(_renderUrl), // re-fetch when the layer filter changes
@@ -88,6 +90,54 @@ class _PlanViewerState extends ConsumerState<PlanViewer> {
           : const Center(child: CircularProgressIndicator()),
     );
 
+    // AspectRatio matches the PNG exactly, so normalized overlay coords
+    // (locate boxes, sketch points) land on the right image spots.
+    final aspect = draft.renderAspect ?? session?.renderAspect;
+    final Widget child = aspect == null
+        ? image
+        : AspectRatio(
+            aspectRatio: aspect,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                image,
+                if (session != null)
+                  CustomPaint(
+                    painter: _HitOverlayPainter(
+                      hits: [
+                        for (final h in session.hits)
+                          if (h.visible) h.hit,
+                      ],
+                      selectedHit: session.selected != null &&
+                              session.hits[session.selected!].visible
+                          ? session.hits[session.selected!].hit
+                          : null,
+                    ),
+                  ),
+                if (draft.points.isNotEmpty || draft.elements.isNotEmpty)
+                  CustomPaint(
+                    painter: _DraftOverlayPainter(
+                      points: draft.points,
+                      elements: draft.elements,
+                    ),
+                  ),
+                if (draft.drawMode)
+                  Positioned.fill(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (details) =>
+                            ref.read(draftProvider.notifier).addPoint(Offset(
+                                  details.localPosition.dx / constraints.maxWidth,
+                                  details.localPosition.dy / constraints.maxHeight,
+                                )),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+
     return GestureDetector(
       onDoubleTap: () => _renderTransform.value = Matrix4.identity(),
       child: InteractiveViewer(
@@ -95,33 +145,7 @@ class _PlanViewerState extends ConsumerState<PlanViewer> {
         minScale: 0.1,
         maxScale: 25.0,
         boundaryMargin: const EdgeInsets.all(double.infinity),
-        child: Center(
-          child: session == null
-              ? image
-              // AspectRatio matches the PNG exactly, so normalized hit
-              // rects from the backend land on the right image spots.
-              : AspectRatio(
-                  aspectRatio: session.renderAspect,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      image,
-                      CustomPaint(
-                        painter: _HitOverlayPainter(
-                          hits: [
-                            for (final h in session.hits)
-                              if (h.visible) h.hit,
-                          ],
-                          selectedHit: session.selected != null &&
-                                  session.hits[session.selected!].visible
-                              ? session.hits[session.selected!].hit
-                              : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-        ),
+        child: Center(child: child),
       ),
     );
   }
@@ -130,6 +154,8 @@ class _PlanViewerState extends ConsumerState<PlanViewer> {
   Widget build(BuildContext context) {
     final payload = widget.job.payload;
     final session = ref.watch(locateProvider);
+    final draft = ref.watch(draftProvider);
+    ref.read(draftProvider.notifier).ensureMeta(widget.job.id);
 
     // New locator hits force the render view, where the boxes live.
     ref.listen(locateProvider, (previous, next) {
@@ -149,7 +175,7 @@ class _PlanViewerState extends ConsumerState<PlanViewer> {
             Positioned.fill(
               child: _mode == PlanViewMode.vector && payload != null
                   ? PlanCanvas(payload: payload, hiddenLayers: _hiddenLayers)
-                  : _buildRenderView(session),
+                  : _buildRenderView(session, draft),
             ),
             Positioned(
               top: 8,
@@ -157,6 +183,43 @@ class _PlanViewerState extends ConsumerState<PlanViewer> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  IconButton(
+                    tooltip: draft.drawMode
+                        ? 'Exit draw mode'
+                        : 'Draw mode: click points, then ask the copilot to '
+                            '"draw the cable line"',
+                    icon: Badge(
+                      isLabelVisible: draft.points.isNotEmpty,
+                      label: Text('${draft.points.length}'),
+                      child: Icon(
+                        draft.drawMode ? Icons.edit : Icons.edit_outlined,
+                        size: 20,
+                        color: draft.drawMode ? const Color(0xFF00BCD4) : null,
+                      ),
+                    ),
+                    onPressed: draft.renderAspect == null
+                        ? null
+                        : () {
+                            ref.read(draftProvider.notifier).toggleDrawMode();
+                            if (!draft.drawMode) {
+                              setState(() => _mode = PlanViewMode.render);
+                            }
+                          },
+                  ),
+                  if (draft.points.isNotEmpty) ...[
+                    IconButton(
+                      tooltip: 'Undo last point',
+                      icon: const Icon(Icons.undo, size: 18),
+                      onPressed: () =>
+                          ref.read(draftProvider.notifier).undoPoint(),
+                    ),
+                    IconButton(
+                      tooltip: 'Clear points',
+                      icon: const Icon(Icons.backspace_outlined, size: 18),
+                      onPressed: () =>
+                          ref.read(draftProvider.notifier).clearPoints(),
+                    ),
+                  ],
                   _buildLayerFilter(),
                   const SizedBox(width: 4),
                   SegmentedButton<PlanViewMode>(
@@ -201,6 +264,79 @@ class _PlanViewerState extends ConsumerState<PlanViewer> {
       ),
     );
   }
+}
+
+/// Sketch overlay: numbered picked points + drawn elements (cyan polylines).
+class _DraftOverlayPainter extends CustomPainter {
+  _DraftOverlayPainter({required this.points, required this.elements});
+
+  final List<Offset> points;
+  final List<DrawnElement> elements;
+
+  static const _sketch = Color(0xFF00BCD4); // cyan
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = _sketch
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    for (final element in elements) {
+      if (element.pointsImage.length < 2) continue;
+      final path = Path()
+        ..moveTo(element.pointsImage.first[0] * size.width,
+            element.pointsImage.first[1] * size.height);
+      for (final p in element.pointsImage.skip(1)) {
+        path.lineTo(p[0] * size.width, p[1] * size.height);
+      }
+      canvas.drawPath(path, line);
+      for (final p in element.pointsImage) {
+        canvas.drawCircle(
+            Offset(p[0] * size.width, p[1] * size.height), 3, Paint()..color = _sketch);
+      }
+      final mid = element.pointsImage[element.pointsImage.length ~/ 2];
+      final label = TextPainter(
+        text: TextSpan(
+          text: '${element.label} · ${element.length.toStringAsFixed(1)} m',
+          style: const TextStyle(
+            color: Colors.black,
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            backgroundColor: _sketch,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: 220);
+      label.paint(
+          canvas, Offset(mid[0] * size.width + 6, mid[1] * size.height - 14));
+    }
+
+    for (var i = 0; i < points.length; i++) {
+      final c = Offset(points[i].dx * size.width, points[i].dy * size.height);
+      canvas.drawCircle(c, 7, Paint()..color = _sketch.withValues(alpha: 0.3));
+      canvas.drawCircle(
+          c,
+          7,
+          Paint()
+            ..color = _sketch
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5);
+      final number = TextPainter(
+        text: TextSpan(
+            text: '${i + 1}',
+            style: const TextStyle(
+                color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      number.paint(canvas, c - Offset(number.width / 2, number.height / 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DraftOverlayPainter oldDelegate) =>
+      oldDelegate.points != points || oldDelegate.elements != elements;
 }
 
 class _HitOverlayPainter extends CustomPainter {

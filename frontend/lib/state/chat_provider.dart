@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
 import '../models/job.dart';
+import 'draft_provider.dart';
 import 'locate_provider.dart';
 import 'pipeline_provider.dart';
 
@@ -9,6 +10,13 @@ import 'pipeline_provider.dart';
 /// are routed to the locator agent instead of the plain chat agent.
 final _locateIntent = RegExp(
   r'\b(where|wo\b|locate|zeig|zeige|markiere|highlight|show me|find the|finde)\b',
+  caseSensitive: false,
+);
+
+/// "Draw/connect …" messages go to the draftsman agent with the points the
+/// planner clicked on the canvas.
+final _drawIntent = RegExp(
+  r'\b(draw|zeichne|verbinde|connect|sketch)\b',
   caseSensitive: false,
 );
 
@@ -49,6 +57,10 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
 
     _sending = true;
     try {
+      if (_drawIntent.hasMatch(message)) {
+        await _draw(job.id, message);
+        return;
+      }
       if (_locateIntent.hasMatch(message) && await _tryLocate(job.id, message)) {
         return;
       }
@@ -58,6 +70,32 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
       state = [...state, ChatMessage(role: 'agent', text: 'Agent error: $e')];
     } finally {
       _sending = false;
+    }
+  }
+
+  Future<void> _draw(String jobId, String message) async {
+    final draft = ref.read(draftProvider);
+    if (draft.points.length < 2) {
+      state = [
+        ...state,
+        const ChatMessage(
+          role: 'agent',
+          text: 'To sketch an element, first enable draw mode (✏️ on the '
+              'canvas) and click at least two points — then ask me again.',
+        ),
+      ];
+      return;
+    }
+    try {
+      final (element, reply) = await ref.read(apiClientProvider).draw(
+        jobId,
+        message,
+        [for (final p in draft.points) [p.dx, p.dy]],
+      );
+      ref.read(draftProvider.notifier).addElement(element);
+      state = [...state, ChatMessage(role: 'agent', text: reply)];
+    } catch (e) {
+      state = [...state, ChatMessage(role: 'agent', text: 'Draftsman error: $e')];
     }
   }
 

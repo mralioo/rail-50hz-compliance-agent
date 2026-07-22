@@ -53,6 +53,11 @@ class PlannerDashboard extends StatelessWidget {
               'Toggle the eye to show/hide its box, expand a row to select it '
               '(orange on canvas), and click "Describe (AI)" for a detailed '
               'description — AI is only called when you ask.\n\n'
+              '5. Sketch elements (draw mode)\n'
+              '   Toggle the pencil icon, click points on the render, then '
+              'tell the copilot e.g. "draw the cable line NYY-J between my '
+              'points". The sketch is an overlay for discussion — the CAD '
+              'file is never modified.\n\n'
               'Liability for final validation remains with the engineer.',
               style: TextStyle(fontSize: 13, height: 1.4),
             ),

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/draft.dart';
 import '../models/job.dart';
 import '../models/locate.dart';
 import 'config.dart';
@@ -58,6 +59,28 @@ class ApiClient {
       data: {'message': message},
     );
     return (response.data as Map<String, dynamic>)['reply'] as String;
+  }
+
+  /// Render pixel size [w, h] for aspect-true canvas overlays.
+  Future<List<int>> renderMeta(String jobId) async {
+    final response = await _dio.get('/api/v1/jobs/$jobId/render/meta');
+    return ((response.data as Map<String, dynamic>)['px'] as List)
+        .map((v) => v as int)
+        .toList();
+  }
+
+  /// Draftsman agent: connect clicked points into a sketch element.
+  Future<(DrawnElement, String)> draw(
+      String jobId, String instruction, List<List<double>> pointsImage) async {
+    final response = await _dio.post(
+      '/api/v1/jobs/$jobId/draw',
+      data: {'instruction': instruction, 'points_image': pointsImage},
+    );
+    final data = response.data as Map<String, dynamic>;
+    return (
+      DrawnElement.fromJson(data['element'] as Map<String, dynamic>),
+      data['reply'] as String,
+    );
   }
 
   /// Recent locator searches (server-side history, newest first).

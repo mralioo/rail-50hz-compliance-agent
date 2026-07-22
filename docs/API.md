@@ -154,6 +154,15 @@ hit — called only on user click to conserve tokens. Design:
 
 ---
 
+### `GET /api/v1/jobs/{job_id}/render/meta` · `POST /api/v1/jobs/{job_id}/draw`
+
+Draftsman agent: `render/meta` exposes the render's world window + pixel
+size; `draw` connects planner-clicked points (normalized render coords) into
+a sketch element — cable lines get length + Ril rule reminders. The CAD file
+is never modified. Design: [DRAFTSMAN_AGENT.md](DRAFTSMAN_AGENT.md).
+
+---
+
 ### `POST /api/v1/jobs/{job_id}/chat`
 
 Ask the agent about a processed plan. Replies are grounded in the job's

@@ -6,6 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.agent.analyzer import analyze_hit, describe_hit
+from app.agent.draftsman import DraftError, draw
 from app.memory import history
 from app.agent.client import get_agent
 from app.agent.locator import locate
@@ -19,6 +20,8 @@ from app.models.schemas import (
     HitsAnalyzeRequest,
     HitsAnalyzeResponse,
     Job,
+    DrawRequest,
+    DrawResponse,
     LocateRequest,
     LocateResponse,
     SearchRecord,
@@ -116,6 +119,31 @@ def describe_one_hit(job_id: str, request: HitDescribeRequest) -> HitDescribeRes
     return HitDescribeResponse(
         description=describe_hit(job.payload, job.report, request.hit, request.analysis)
     )
+
+
+@router.get("/jobs/{job_id}/render/meta")
+def get_render_meta(job_id: str) -> dict:
+    """World window + pixel size of the render (canvas coordinate mapping)."""
+    if job_store.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    meta = load_render_meta(render_path_for(job_id))
+    if meta is None:
+        raise HTTPException(status_code=404, detail="No render available for this job")
+    return {"world": meta["world"], "px": meta["px"]}
+
+
+@router.post("/jobs/{job_id}/draw", response_model=DrawResponse)
+def draw_element(job_id: str, request: DrawRequest) -> DrawResponse:
+    """Draftsman agent: connect planner-clicked points as a sketch overlay."""
+    _processed_job(job_id)
+    try:
+        return draw(
+            request.instruction,
+            request.points_image,
+            load_render_meta(render_path_for(job_id)),
+        )
+    except DraftError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.post("/jobs/{job_id}/chat", response_model=ChatResponse)
