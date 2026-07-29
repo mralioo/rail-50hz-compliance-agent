@@ -86,12 +86,30 @@ class Job(BaseModel):
     report: ComplianceReport | None = None
 
 
+class JobSummary(BaseModel):
+    """Lightweight Job listing entry - no payload/report, safe to list many."""
+
+    id: str
+    filename: str
+    status: JobStatus
+
+
 class ChatRequest(BaseModel):
     message: str
+    # Browser-console-only field (see app/agent/rag.py::list_knowledge_bases);
+    # None = ground on every knowledge base, same as before this field existed.
+    # Not mirrored in the Flutter Dart models — it has no equivalent UI there.
+    knowledge_bases: list[str] | None = None
 
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class KnowledgeBase(BaseModel):
+    id: str
+    name: str
+    doc_count: int
 
 
 # --------------------------------------------------------------------------- #
@@ -173,6 +191,47 @@ class DrawnElement(BaseModel):
 class DrawResponse(BaseModel):
     element: DrawnElement
     reply: str  # chat-ready confirmation text
+
+
+# --------------------------------------------------------------------------- #
+# DWG manipulation (direct read/edit of the uploaded file via cad_engines)
+# --------------------------------------------------------------------------- #
+class DwgReadResponse(BaseModel):
+    source_file: str
+    engine: str  # which cad_engines engine produced this (e.g. "acadsharp")
+    layers: list[str]
+    geometries: list[Geometry]
+    texts: list[TextItem]
+
+
+class DwgEditOp(BaseModel):
+    op: str  # "add_geometry" | "add_text" | "remove_geometry" | "remove_text"
+    geometry: Geometry | None = None  # required for add_geometry
+    text: TextItem | None = None  # required for add_text
+    index: int | None = None  # required for remove_geometry / remove_text
+
+
+class DwgManipulateRequest(BaseModel):
+    edits: list[DwgEditOp]
+    engine: str = "acadsharp"  # cad_engines engine to read+write with
+    version: str = "r2018"  # DWG version to write back (see CAD_ENGINE_FRAMEWORK.md)
+
+
+class DwgManipulateResponse(BaseModel):
+    engine: str
+    version: str
+    layers: list[str]
+    geometries: list[Geometry]
+    texts: list[TextItem]
+    download_url: str  # GET this path for the manipulated .dwg
+
+
+# --------------------------------------------------------------------------- #
+# Interactive viewer (cad-viewer export - see CAD_VIEWER_INTEGRATION.md)
+# --------------------------------------------------------------------------- #
+class ViewerAnnotateRequest(BaseModel):
+    locate_hits: list[LocateHit] = Field(default_factory=list)
+    drawn_elements: list[DrawnElement] = Field(default_factory=list)
 
 
 class SearchRecord(BaseModel):

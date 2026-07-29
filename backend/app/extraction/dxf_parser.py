@@ -5,13 +5,17 @@ downstream code (geometry math, agent, frontend canvas) never touches ezdxf.
 """
 from pathlib import Path
 
-import ezdxf
+import ezdxf.recover
 
 from app.models.schemas import Geometry, TextItem
 
 
 def parse_dxf(path: Path) -> tuple[list[str], list[Geometry], list[TextItem]]:
-    doc = ezdxf.readfile(str(path))
+    # recover mode (not the strict ezdxf.readfile): DXF round-tripped through
+    # DWG writers of varying maturity (LibreDWG's dxf2dwg included, see
+    # CAD_MANIPULATION_ENGINE.md) is exactly the "unknown origin" case ezdxf
+    # recommends this for.
+    doc, _auditor = ezdxf.recover.readfile(str(path))
     msp = doc.modelspace()
 
     layers = sorted(layer.dxf.name for layer in doc.layers)

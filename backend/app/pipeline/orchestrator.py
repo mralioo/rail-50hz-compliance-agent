@@ -20,6 +20,14 @@ def render_path_for(job_id: str) -> Path:
     return get_settings().work_dir / job_id / "render.png"
 
 
+def manipulated_dwg_path_for(job_id: str) -> Path:
+    return get_settings().work_dir / job_id / "manipulated.dwg"
+
+
+def viewer_path_for(job_id: str) -> Path:
+    return get_settings().work_dir / job_id / "viewer.html"
+
+
 class JobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
@@ -38,6 +46,11 @@ class JobStore:
     def update(self, job: Job) -> None:
         with self._lock:
             self._jobs[job.id] = job
+
+    def list_recent(self, limit: int = 10) -> list[Job]:
+        """Most-recently-created first (insertion order, dict is ordered)."""
+        with self._lock:
+            return list(reversed(list(self._jobs.values())))[:limit]
 
 
 job_store = JobStore()

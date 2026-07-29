@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Rail50Hz Console</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b0d10; color: #dfe4ea; font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; }
+  #card { width: 480px; max-width: 92vw; background: #12151a; border: 1px solid #262b33; border-radius: 12px; padding: 28px; }
+  h1 { margin: 0 0 4px; font-size: 18px; }
+  p.sub { margin: 0 0 20px; color: #8a92a1; font-size: 13px; }
+  #drop { border: 2px dashed #2e3540; border-radius: 10px; padding: 36px 16px; text-align: center; cursor: pointer; color: #b7bfcc; transition: border-color .15s, background .15s; }
+  #drop:hover, #drop.drag { border-color: #4ea1ff; background: #101820; }
+  #drop .hint { font-size: 12px; color: #6b7383; margin-top: 6px; }
+  input[type=file] { display: none; }
+  #status { margin-top: 18px; font-size: 13px; color: #aab2c0; min-height: 18px; white-space: pre-wrap; }
+  #status.error { color: #e0463a; }
+  #recent { margin-top: 22px; border-top: 1px solid #262b33; padding-top: 14px; }
+  #recent h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7383; margin: 0 0 8px; font-weight: 600; }
+  .recent-row { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .recent-row:hover { background: #1c2129; }
+  .recent-row .name { color: #dfe4ea; }
+  .recent-row .meta { color: #6b7383; }
+</style>
+</head>
+<body>
+<div id="card">
+  <h1>Rail50Hz Console</h1>
+  <p class="sub">Load a plan to begin — .dwg or .dxf, any real file.</p>
+  <div id="drop">
+    Drop a .dwg / .dxf file here, or click to browse
+    <div class="hint">Converted, extracted and analyzed automatically once uploaded.</div>
+  </div>
+  <input type="file" id="file-input" accept=".dwg,.dxf">
+  <div id="status"></div>
+  <div id="recent" style="display:none">
+    <h2>Recent plans</h2>
+    <div id="recent-list"></div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  const drop = document.getElementById("drop");
+  const fileInput = document.getElementById("file-input");
+  const statusEl = document.getElementById("status");
+
+  function setStatus(text, isError) {
+    statusEl.textContent = text || "";
+    statusEl.classList.toggle("error", !!isError);
+  }
+
+  drop.addEventListener("click", () => fileInput.click());
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("drag"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
+  drop.addEventListener("drop", e => {
+    e.preventDefault();
+    drop.classList.remove("drag");
+    if (e.dataTransfer.files.length) upload(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length) upload(fileInput.files[0]);
+  });
+
+  function upload(file) {
+    if (!/\.(dwg|dxf)$/i.test(file.name)) {
+      setStatus("Please choose a .dwg or .dxf file.", true);
+      return;
+    }
+    setStatus("Uploading " + file.name + " …");
+    const form = new FormData();
+    form.append("file", file);
+    fetch("/api/v1/jobs", { method: "POST", body: form })
+      .then(r => {
+        if (!r.ok) return r.json().then(d => { throw new Error(d.detail || r.statusText); });
+        return r.json();
+      })
+      .then(job => pollUntilReady(job.id))
+      .catch(err => setStatus("Upload failed: " + err.message, true));
+  }
+
+  function pollUntilReady(jobId) {
+    fetch("/api/v1/jobs/" + jobId)
+      .then(r => r.json())
+      .then(job => {
+        if (job.status === "ready") {
+          setStatus("Ready — opening console …");
+          window.location.href = "/api/v1/jobs/" + jobId + "/console";
+        } else if (job.status === "failed") {
+          setStatus("Processing failed: " + (job.error || "unknown error"), true);
+        } else {
+          setStatus("Processing (" + job.status + ") …");
+          setTimeout(() => pollUntilReady(jobId), 1000);
+        }
+      })
+      .catch(err => setStatus("Lost track of the job: " + err.message, true));
+  }
+
+  fetch("/api/v1/jobs?limit=8")
+    .then(r => r.json())
+    .then(rows => {
+      rows = rows.filter(r => r.status === "ready");
+      if (!rows.length) return;
+      const recentList = document.getElementById("recent-list");
+      rows.forEach(row => {
+        const div = document.createElement("div");
+        div.className = "recent-row";
+        div.innerHTML = '<span class="name"></span><span class="meta"></span>';
+        div.querySelector(".name").textContent = row.filename;
+        div.querySelector(".meta").textContent = row.status;
+        div.addEventListener("click", () => {
+          window.location.href = "/api/v1/jobs/" + row.id + "/console";
+        });
+        recentList.appendChild(div);
+      });
+      document.getElementById("recent").style.display = "block";
+    })
+    .catch(() => {});
+})();
+</script>
+</body>
+</html>

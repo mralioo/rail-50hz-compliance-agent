@@ -1,0 +1,551 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Rail50Hz Console</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b0d10; color: #dfe4ea; font: 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { display: flex; height: 100vh; }
+
+  #sidebar { width: 360px; min-width: 360px; display: flex; flex-direction: column; background: #12151a; border-right: 1px solid #262b33; }
+  #tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid #262b33; }
+  #tabs button { flex: 1 1 33%; padding: 9px 4px; background: none; border: none; color: #8a92a1; font-size: 11px; cursor: pointer; border-bottom: 2px solid transparent; }
+  #tabs button:hover { color: #dfe4ea; }
+  #tabs button.active { color: #4ea1ff; border-bottom-color: #4ea1ff; }
+
+  #panels { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .panel { display: none; flex-direction: column; height: 100%; overflow: hidden; }
+  .panel.active { display: flex; }
+
+  /* Chat panel */
+  #chat-macros { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-bottom: 1px solid #262b33; }
+  .macro-chip { background: #1c2129; border: 1px solid #2e3540; color: #b7bfcc; border-radius: 12px; padding: 5px 10px; font-size: 11px; cursor: pointer; }
+  .macro-chip:hover { background: #232a34; }
+  #chat-history { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 92%; padding: 7px 10px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: #1f3a5f; color: #eaf2ff; }
+  .msg.agent { align-self: flex-start; background: #1c2129; color: #dfe4ea; }
+  .msg.system { align-self: center; color: #7a8494; font-size: 11px; font-style: italic; }
+  #chat-input-row { display: flex; gap: 6px; padding: 8px; border-top: 1px solid #262b33; }
+  #chat-input { flex: 1; background: #1c2129; border: 1px solid #2e3540; color: #dfe4ea; border-radius: 6px; padding: 8px; resize: none; font: inherit; }
+  #chat-send { background: #2c5fa8; border: none; color: white; border-radius: 6px; padding: 0 14px; cursor: pointer; }
+  #chat-send:disabled { opacity: .5; cursor: default; }
+
+  /* generic list panel */
+  .panel-header { padding: 8px 10px; border-bottom: 1px solid #262b33; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .panel-header h3 { margin: 0; font-size: 12px; color: #9aa4b3; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .panel-body { flex: 1; overflow-y: auto; padding: 8px; }
+  .btn-mini { background: #1c2129; border: 1px solid #2e3540; color: #b7bfcc; border-radius: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+  .btn-mini:hover { background: #232a34; }
+  .empty-hint { color: #6b7383; padding: 10px; font-size: 12px; }
+
+  /* findings */
+  .hit-card { background: #171b21; border: 1px solid #262b33; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+  .hit-card-top { display: flex; align-items: center; gap: 8px; }
+  .hit-card-top label { flex: 1; font-weight: 600; cursor: pointer; }
+  .hit-conf { color: #6b7383; font-size: 10px; }
+  .hit-actions { display: flex; gap: 6px; margin-top: 6px; }
+  .hit-detail { margin-top: 6px; font-size: 11px; color: #aab2c0; border-top: 1px dashed #262b33; padding-top: 6px; display: none; }
+  .hit-detail.open { display: block; }
+  .hit-detail div { margin-bottom: 2px; }
+  .hit-desc { margin-top: 6px; font-size: 11px; color: #cfe0ff; background: #16202e; border-radius: 5px; padding: 6px; }
+
+  /* history */
+  .hist-row { padding: 7px 8px; border-radius: 6px; cursor: pointer; margin-bottom: 4px; }
+  .hist-row:hover { background: #1c2129; }
+  .hist-q { font-weight: 600; }
+  .hist-meta { color: #6b7383; font-size: 10px; }
+
+  /* sketch */
+  #sketch-toolbar { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid #262b33; }
+  #sketch-hint { padding: 6px 10px; color: #8a92a1; font-size: 11px; }
+  #sketch-wrap { position: relative; flex: 1; overflow: auto; }
+  #sketch-img { width: 100%; display: block; cursor: crosshair; }
+  .sketch-marker { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; background: #e0463a; color: white; border-radius: 50%; font-size: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; pointer-events: none; }
+
+  /* kb */
+  .kb-row { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid #262b33; border-radius: 6px; margin-bottom: 6px; }
+  .kb-row div { flex: 1; }
+  .kb-name { font-weight: 600; }
+  .kb-count { color: #6b7383; font-size: 10px; }
+
+  /* viewer pane */
+  #viewer-pane { flex: 1; position: relative; background: #000; }
+  #viewer-frame { width: 100%; height: 100%; border: none; }
+  #viewer-loading { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.55); color: #dfe4ea; font-size: 13px; z-index: 5; }
+  #viewer-loading.show { display: flex; }
+  #title-bar { position: absolute; top: 8px; left: 8px; background: rgba(18,21,26,.85); border: 1px solid #262b33; border-radius: 6px; padding: 5px 10px; font-size: 11px; color: #aab2c0; z-index: 4; display: flex; align-items: center; gap: 10px; }
+  #title-bar a { color: #4ea1ff; text-decoration: none; }
+  #title-bar a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div id="tabs">
+      <button data-tab="chat" class="active">Chat</button>
+      <button data-tab="findings">Findings</button>
+      <button data-tab="history">History</button>
+      <button data-tab="sketch">Sketch</button>
+      <button data-tab="kb">Knowledge Base</button>
+    </div>
+    <div id="panels">
+
+      <section id="panel-chat" class="panel active">
+        <div id="chat-macros"></div>
+        <div id="chat-history"></div>
+        <div id="chat-input-row">
+          <textarea id="chat-input" rows="2" placeholder="Ask about compliance, or type 'where is ...' to locate a component"></textarea>
+          <button id="chat-send">Send</button>
+        </div>
+      </section>
+
+      <section id="panel-findings" class="panel">
+        <div class="panel-header">
+          <h3>Findings</h3>
+          <div>
+            <button class="btn-mini" id="findings-show-all">Show all</button>
+            <button class="btn-mini" id="findings-hide-all">Hide all</button>
+          </div>
+        </div>
+        <div class="panel-body" id="findings-body">
+          <div class="empty-hint">Ask "where is ..." in Chat, or use History, to populate findings.</div>
+        </div>
+      </section>
+
+      <section id="panel-history" class="panel">
+        <div class="panel-header"><h3>Search history</h3><button class="btn-mini" id="history-refresh">Refresh</button></div>
+        <div class="panel-body" id="history-body"><div class="empty-hint">Loading…</div></div>
+      </section>
+
+      <section id="panel-sketch" class="panel">
+        <div id="sketch-toolbar">
+          <button class="btn-mini" id="sketch-undo">Undo point</button>
+          <button class="btn-mini" id="sketch-clear-points">Clear points</button>
+          <button class="btn-mini" id="sketch-clear-drawn">Clear sketches</button>
+        </div>
+        <div id="sketch-hint">Click the plan to mark points, then send an instruction in Chat (e.g. "draw the cable line between the points").</div>
+        <div id="sketch-wrap"><img id="sketch-img" alt="plan render"></div>
+      </section>
+
+      <section id="panel-kb" class="panel">
+        <div class="panel-header"><h3>Knowledge bases</h3></div>
+        <div class="panel-body" id="kb-body"><div class="empty-hint">Loading…</div></div>
+      </section>
+
+    </div>
+  </aside>
+
+  <main id="viewer-pane">
+    <div id="title-bar"><span id="title-filename"></span><a href="/api/v1/console">Load new plan</a></div>
+    <div id="viewer-loading">Updating viewer…</div>
+    <iframe id="viewer-frame"></iframe>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const JOB_ID = "__JOB_ID__";
+  const FILENAME = __FILENAME_JSON__;
+  const API = "/api/v1/jobs/" + JOB_ID;
+
+  document.getElementById("title-filename").textContent = FILENAME;
+
+  // ---- state -------------------------------------------------------------
+  let lastHits = [];                 // LocateHit[] from the most recent /locate
+  let visibleHitIds = new Set();     // indices into lastHits currently baked into the viewer
+  let hitAnalyses = {};              // index -> HitAnalysis
+  let hitDescriptions = {};          // index -> string (cache, avoid re-billing)
+  let expandedHits = new Set();      // index -> detail panel open
+  let drawnElements = [];            // DrawnElement[] baked into the viewer (draftsman)
+  let pendingSketchPoints = [];      // [[nx, ny], ...] not yet confirmed into a DrawnElement
+  let selectedKbIds = null;          // null = all knowledge bases
+
+  const locateIntentRe = /\b(where|wo\b|locate|zeig|zeige|markiere|highlight|show me|find the|finde)\b/i;
+  const drawIntentRe = /\b(draw|zeichne|verbinde|connect|sketch)\b/i;
+
+  // ---- tabs ----------------------------------------------------------------
+  document.querySelectorAll("#tabs button").forEach(btn => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  });
+  function switchTab(name) {
+    document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
+    if (name === "history" && !historyLoaded) loadHistory();
+    if (name === "kb" && !kbLoaded) loadKnowledgeBases();
+  }
+
+  // ---- viewer iframe ---------------------------------------------------
+  const iframe = document.getElementById("viewer-frame");
+  const loadingEl = document.getElementById("viewer-loading");
+
+  function loadBaseViewer() {
+    loadingEl.classList.add("show");
+    fetch(API + "/viewer")
+      .then(r => r.text())
+      .then(html => { iframe.srcdoc = html; })
+      .catch(err => appendChat("system", "Failed to load viewer: " + err))
+      .finally(() => loadingEl.classList.remove("show"));
+  }
+
+  let reannotateTimer = null;
+  function reannotateAndReload() {
+    clearTimeout(reannotateTimer);
+    reannotateTimer = setTimeout(() => {
+      const visibleHits = lastHits.filter((_, i) => visibleHitIds.has(i));
+      loadingEl.classList.add("show");
+      fetch(API + "/viewer/annotate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locate_hits: visibleHits, drawn_elements: drawnElements }),
+      })
+        .then(r => r.text())
+        .then(html => { iframe.srcdoc = html; })
+        .catch(err => appendChat("system", "Failed to update viewer: " + err))
+        .finally(() => loadingEl.classList.remove("show"));
+    }, 350);
+  }
+
+  // ---- chat --------------------------------------------------------------
+  const chatHistoryEl = document.getElementById("chat-history");
+  const chatInput = document.getElementById("chat-input");
+  const chatSend = document.getElementById("chat-send");
+
+  const MACROS = [
+    "Verify VDE Compliance",
+    "Check Bending Radii",
+    "Generate Explanatory Report",
+    "Where is the Schalthaus?",
+  ];
+  const macrosEl = document.getElementById("chat-macros");
+  MACROS.forEach(text => {
+    const chip = document.createElement("button");
+    chip.className = "macro-chip";
+    chip.textContent = text;
+    chip.addEventListener("click", () => sendMessage(text));
+    macrosEl.appendChild(chip);
+  });
+
+  function appendChat(kind, text) {
+    const div = document.createElement("div");
+    div.className = "msg " + kind;
+    div.textContent = text;
+    chatHistoryEl.appendChild(div);
+    chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+  }
+
+  chatSend.addEventListener("click", () => {
+    const text = chatInput.value.trim();
+    if (!text) return;
+    chatInput.value = "";
+    sendMessage(text);
+  });
+  chatInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatSend.click(); }
+  });
+
+  function sendMessage(text) {
+    appendChat("user", text);
+    chatSend.disabled = true;
+
+    if (pendingSketchPoints.length >= 2 && drawIntentRe.test(text)) {
+      runDraw(text).finally(() => { chatSend.disabled = false; });
+      return;
+    }
+    if (locateIntentRe.test(text)) {
+      runLocate(text).finally(() => { chatSend.disabled = false; });
+      return;
+    }
+    fetch(API + "/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, knowledge_bases: selectedKbIds }),
+    })
+      .then(r => r.json())
+      .then(data => appendChat("agent", data.reply))
+      .catch(err => appendChat("system", "Chat failed: " + err))
+      .finally(() => { chatSend.disabled = false; });
+  }
+
+  // ---- locate + findings --------------------------------------------------
+  function runLocate(query) {
+    return fetch(API + "/locate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        lastHits = data.hits || [];
+        visibleHitIds = new Set(lastHits.map((_, i) => i));
+        hitAnalyses = {};
+        hitDescriptions = {};
+        expandedHits = new Set();
+        appendChat("agent", lastHits.length
+          ? `Found ${lastHits.length} match(es) for "${query}" — see Findings.`
+          : `No matches found for "${query}".`);
+        renderFindings();
+        switchTab("findings");
+        reannotateAndReload();
+        if (lastHits.length) {
+          return fetch(API + "/hits/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hits: lastHits }),
+          })
+            .then(r => r.json())
+            .then(d => {
+              (d.analyses || []).forEach((a, i) => { hitAnalyses[i] = a; });
+              renderFindings();
+            });
+        }
+      })
+      .catch(err => appendChat("system", "Locate failed: " + err));
+  }
+
+  const findingsBody = document.getElementById("findings-body");
+  document.getElementById("findings-show-all").addEventListener("click", () => {
+    visibleHitIds = new Set(lastHits.map((_, i) => i));
+    renderFindings();
+    reannotateAndReload();
+  });
+  document.getElementById("findings-hide-all").addEventListener("click", () => {
+    visibleHitIds = new Set();
+    renderFindings();
+    reannotateAndReload();
+  });
+
+  function renderFindings() {
+    findingsBody.innerHTML = "";
+    if (!lastHits.length) {
+      findingsBody.innerHTML = '<div class="empty-hint">Ask "where is ..." in Chat, or use History, to populate findings.</div>';
+      return;
+    }
+    lastHits.forEach((hit, i) => {
+      const card = document.createElement("div");
+      card.className = "hit-card";
+
+      const top = document.createElement("div");
+      top.className = "hit-card-top";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = visibleHitIds.has(i);
+      cb.addEventListener("change", () => {
+        if (cb.checked) visibleHitIds.add(i); else visibleHitIds.delete(i);
+        reannotateAndReload();
+      });
+
+      const label = document.createElement("label");
+      label.textContent = hit.label + " ";
+      const conf = document.createElement("span");
+      conf.className = "hit-conf";
+      conf.textContent = "(" + Math.round(hit.confidence * 100) + "%, " + hit.source + ")";
+      label.appendChild(conf);
+      label.addEventListener("click", () => {
+        if (expandedHits.has(i)) expandedHits.delete(i); else expandedHits.add(i);
+        renderFindings();
+      });
+
+      top.appendChild(cb);
+      top.appendChild(label);
+      card.appendChild(top);
+
+      const actions = document.createElement("div");
+      actions.className = "hit-actions";
+
+      const focusBtn = document.createElement("button");
+      focusBtn.className = "btn-mini";
+      focusBtn.textContent = "Focus";
+      focusBtn.addEventListener("click", () => {
+        visibleHitIds = new Set([i]);
+        renderFindings();
+        reannotateAndReload();
+      });
+      actions.appendChild(focusBtn);
+
+      const descBtn = document.createElement("button");
+      descBtn.className = "btn-mini";
+      descBtn.textContent = "Describe";
+      descBtn.addEventListener("click", () => {
+        if (hitDescriptions[i]) { expandedHits.add(i); renderFindings(); return; }
+        descBtn.disabled = true;
+        fetch(API + "/hits/describe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hit, analysis: hitAnalyses[i] || null }),
+        })
+          .then(r => r.json())
+          .then(d => { hitDescriptions[i] = d.description; expandedHits.add(i); renderFindings(); })
+          .catch(err => appendChat("system", "Describe failed: " + err));
+      });
+      actions.appendChild(descBtn);
+
+      card.appendChild(actions);
+
+      const detail = document.createElement("div");
+      detail.className = "hit-detail" + (expandedHits.has(i) ? " open" : "");
+      const a = hitAnalyses[i];
+      if (a) {
+        detail.innerHTML =
+          "<div>Layer: " + (a.layer || "—") + "</div>" +
+          "<div>Entities: " + a.entity_count + " (" + Object.entries(a.entities_by_kind || {}).map(([k, v]) => k + "=" + v).join(", ") + ")</div>" +
+          "<div>Bbox: " + a.bbox_size[0].toFixed(2) + " x " + a.bbox_size[1].toFixed(2) + "</div>" +
+          "<div>Layers present: " + (a.layers || []).join(", ") + "</div>";
+      }
+      if (hitDescriptions[i]) {
+        const descDiv = document.createElement("div");
+        descDiv.className = "hit-desc";
+        descDiv.textContent = hitDescriptions[i];
+        detail.appendChild(descDiv);
+      }
+      card.appendChild(detail);
+
+      findingsBody.appendChild(card);
+    });
+  }
+
+  // ---- history -------------------------------------------------------------
+  let historyLoaded = false;
+  const historyBody = document.getElementById("history-body");
+  document.getElementById("history-refresh").addEventListener("click", loadHistory);
+
+  function loadHistory() {
+    historyBody.innerHTML = '<div class="empty-hint">Loading…</div>';
+    fetch("/api/v1/searches?limit=20")
+      .then(r => r.json())
+      .then(rows => {
+        historyLoaded = true;
+        historyBody.innerHTML = "";
+        if (!rows.length) { historyBody.innerHTML = '<div class="empty-hint">No searches yet.</div>'; return; }
+        rows.forEach(row => {
+          const div = document.createElement("div");
+          div.className = "hist-row";
+          div.innerHTML = '<div class="hist-q"></div><div class="hist-meta"></div>';
+          div.querySelector(".hist-q").textContent = row.query;
+          div.querySelector(".hist-meta").textContent =
+            row.filename + " — " + row.hit_count + " hit(s) — " + new Date(row.ts * 1000).toLocaleString();
+          div.addEventListener("click", () => {
+            appendChat("user", row.query);
+            runLocate(row.query);
+          });
+          historyBody.appendChild(div);
+        });
+      })
+      .catch(err => { historyBody.innerHTML = '<div class="empty-hint">Failed to load history.</div>'; });
+  }
+
+  // ---- sketch / draftsman ---------------------------------------------------
+  const sketchImg = document.getElementById("sketch-img");
+  const sketchWrap = document.getElementById("sketch-wrap");
+  sketchImg.src = API + "/render";
+
+  function renderSketchMarkers() {
+    sketchWrap.querySelectorAll(".sketch-marker").forEach(el => el.remove());
+    // Markers are positioned relative to #sketch-wrap, but the wrap is a
+    // scrollable flex area taller than the image itself - percentages of
+    // pt[] must be resolved against the image's own rendered box (offset
+    // within the wrap + its rendered width/height), not the wrap's box.
+    const left0 = sketchImg.offsetLeft;
+    const top0 = sketchImg.offsetTop;
+    const w = sketchImg.clientWidth;
+    const h = sketchImg.clientHeight;
+    pendingSketchPoints.forEach((pt, i) => {
+      const marker = document.createElement("div");
+      marker.className = "sketch-marker";
+      marker.style.left = (left0 + pt[0] * w) + "px";
+      marker.style.top = (top0 + pt[1] * h) + "px";
+      marker.textContent = String(i + 1);
+      sketchWrap.appendChild(marker);
+    });
+  }
+
+  sketchImg.addEventListener("click", e => {
+    const rect = sketchImg.getBoundingClientRect();
+    const nx = (e.clientX - rect.left) / rect.width;
+    const ny = (e.clientY - rect.top) / rect.height;
+    pendingSketchPoints.push([nx, ny]);
+    renderSketchMarkers();
+  });
+
+  document.getElementById("sketch-undo").addEventListener("click", () => {
+    pendingSketchPoints.pop();
+    renderSketchMarkers();
+  });
+  document.getElementById("sketch-clear-points").addEventListener("click", () => {
+    pendingSketchPoints = [];
+    renderSketchMarkers();
+  });
+  document.getElementById("sketch-clear-drawn").addEventListener("click", () => {
+    drawnElements = [];
+    reannotateAndReload();
+  });
+
+  function runDraw(instruction) {
+    return fetch(API + "/draw", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction, points_image: pendingSketchPoints }),
+    })
+      .then(r => {
+        if (!r.ok) return r.json().then(d => { throw new Error(d.detail || r.statusText); });
+        return r.json();
+      })
+      .then(data => {
+        drawnElements.push(data.element);
+        pendingSketchPoints = [];
+        renderSketchMarkers();
+        appendChat("agent", data.reply);
+        reannotateAndReload();
+      })
+      .catch(err => appendChat("system", "Draw failed: " + err.message));
+  }
+
+  // ---- knowledge base ------------------------------------------------------
+  let kbLoaded = false;
+  const kbBody = document.getElementById("kb-body");
+
+  function loadKnowledgeBases() {
+    kbBody.innerHTML = '<div class="empty-hint">Loading…</div>';
+    fetch("/api/v1/knowledge-bases")
+      .then(r => r.json())
+      .then(kbs => {
+        kbLoaded = true;
+        kbBody.innerHTML = "";
+        kbs.forEach(kb => {
+          const row = document.createElement("div");
+          row.className = "kb-row";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = true;
+          cb.addEventListener("change", () => updateSelectedKbIds(kbs));
+          const info = document.createElement("div");
+          info.innerHTML = '<div class="kb-name"></div><div class="kb-count"></div>';
+          info.querySelector(".kb-name").textContent = kb.name;
+          info.querySelector(".kb-count").textContent = kb.doc_count + " document(s)";
+          row.dataset.kbId = kb.id;
+          row.appendChild(cb);
+          row.appendChild(info);
+          kbBody.appendChild(row);
+        });
+      })
+      .catch(() => { kbBody.innerHTML = '<div class="empty-hint">Failed to load knowledge bases.</div>'; });
+  }
+
+  function updateSelectedKbIds(kbs) {
+    const rows = Array.from(kbBody.querySelectorAll(".kb-row"));
+    const checked = rows.filter(r => r.querySelector("input").checked).map(r => r.dataset.kbId);
+    selectedKbIds = checked.length === kbs.length ? null : checked;
+  }
+
+  // ---- boot ------------------------------------------------------------
+  loadBaseViewer();
+  renderFindings();
+})();
+</script>
+</body>
+</html>

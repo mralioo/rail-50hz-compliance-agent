@@ -115,6 +115,7 @@ class AgentClient(ABC):
         message: str,
         payload: DataLayerPayload | None,
         report: ComplianceReport | None,
+        kb_ids: list[str] | None = None,
     ) -> str: ...
 
 
@@ -176,10 +177,10 @@ class MockAgentClient(AgentClient):
         )
         return ComplianceReport(findings=findings, summary=summary)
 
-    def chat(self, message, payload, report) -> str:
+    def chat(self, message, payload, report, kb_ids=None) -> str:
         if report is None:
             return "Upload and process a plan first — then I can answer compliance questions."
-        context = rag.retrieve(message)
+        context = rag.retrieve(message, kb_ids=kb_ids)
         lines = [f"- [{f.status.value}] {f.parameter}: {f.actual} (expected {f.expected})"
                  for f in report.findings]
         reply = "Current compliance state:\n" + ("\n".join(lines) or "- no findings")
@@ -219,8 +220,8 @@ class OpenAIAgentClient(AgentClient):
         )
         return ComplianceReport.model_validate(json.loads(response.choices[0].message.content))
 
-    def chat(self, message, payload, report) -> str:
-        context = [f"Regulations:\n" + "\n".join(rag.retrieve(message))]
+    def chat(self, message, payload, report, kb_ids=None) -> str:
+        context = [f"Regulations:\n" + "\n".join(rag.retrieve(message, kb_ids=kb_ids))]
         if report:
             context.append(f"Compliance report:\n{report.model_dump_json()}")
         if payload:
@@ -266,8 +267,8 @@ class VertexAgentClient(AgentClient):
         )
         return ComplianceReport.model_validate(json.loads(response.text))
 
-    def chat(self, message, payload, report) -> str:
-        context_parts = [f"Regulations:\n{chr(10).join(rag.retrieve(message))}"]
+    def chat(self, message, payload, report, kb_ids=None) -> str:
+        context_parts = [f"Regulations:\n{chr(10).join(rag.retrieve(message, kb_ids=kb_ids))}"]
         if report:
             context_parts.append(f"Compliance report:\n{report.model_dump_json()}")
         response = self._client.models.generate_content(
