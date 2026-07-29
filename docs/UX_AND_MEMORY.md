@@ -58,6 +58,14 @@ Every locate query is saved to SQLite (`WORK_DIR/history.db`,
   and **pinned to the base render's world window** so locator overlays stay
   aligned. Verified: 2-layer variant = 12.7 KB vs 648 KB full render.
 
+## 7. Browser console (Engineer's Console) — see CAD_VIEWER_INTEGRATION.md §9
+All of the above (search history, layer filter, chat, Cognee-grounded
+replies) plus locate-highlight, findings, and draftsman sketching now also
+exist as a browser-based sidebar around the interactive cad-viewer export
+(`GET /jobs/{id}/console`, opened by `make viewer`) — a separate surface
+from the Flutter app described in this doc. Full design, endpoint list, and
+verified results: [CAD_VIEWER_INTEGRATION.md](CAD_VIEWER_INTEGRATION.md) §9.
+
 ## Files touched
 Backend: `memory/cognee_store.py`, `memory/history.py`,
 `scripts/seed_memory.py`, `agent/prompts/{chat,locator,describe}.md`,

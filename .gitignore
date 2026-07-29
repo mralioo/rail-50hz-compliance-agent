@@ -231,6 +231,25 @@ workdir/
 # use `make sample` to generate the committed demo file instead
 /dataset/
 
+# .NET build output (tools/acadsharp_cli) — rebuild with `dotnet build -c Release`
+backend/tools/acadsharp_cli/bin/
+backend/tools/acadsharp_cli/obj/
+
+# Engine benchmark sweep output — regenerate with scripts/engine_bench.py;
+# the blank/dummy fixtures in cad_engine_poc/ itself stay committed
+backend/data/samples/cad_engine_poc/bench/
+backend/data/samples/cad_engine_poc/bench_results.json
+
+# QCAD upstream source (~500MB, GPLv3, cloned for connector investigation) —
+# never vendor this; re-clone with `git clone https://github.com/qcad/qcad.git`
+# per docs/QCAD_CONNECTOR.md if experimentation resumes
+backend/tools/vendor/
+
+# cad-viewer exporter CLI deps — package.json/package-lock.json stay committed,
+# rebuild with `cd backend/tools/cad_viewer_cli && npm install && npx playwright
+# install chromium` per docs/CAD_VIEWER_INTEGRATION.md
+backend/tools/cad_viewer_cli/node_modules/
+
 # Editors & OS
 .vscode/
 .idea/

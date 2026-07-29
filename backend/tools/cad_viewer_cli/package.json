@@ -1,0 +1,8 @@
+{
+  "name": "rail50hz-cad-viewer-cli",
+  "private": true,
+  "description": "Standalone install of @mlightcad/cad-html-exporter-cli for the DXF->self-contained-HTML export step. See docs/CAD_VIEWER_INTEGRATION.md.",
+  "dependencies": {
+    "@mlightcad/cad-html-exporter-cli": "1.5.8"
+  }
+}

@@ -2,7 +2,7 @@
 VENV := backend/.venv
 PY := $(VENV)/bin/python
 
-.PHONY: setup backend sample test frontend docker
+.PHONY: setup backend sample test frontend docker viewer
 
 setup: ## create venv + install backend deps
 	python3 -m venv $(VENV)
@@ -24,3 +24,6 @@ frontend: ## run the Flutter desktop app (Linux)
 
 docker: ## build the Cloud Run image
 	docker build -f deployment/Dockerfile -t rail50hz-backend .
+
+viewer: ## check deps, start backend if needed, open the interactive cad-viewer
+	backend/scripts/launch_viewer.sh

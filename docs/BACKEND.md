@@ -144,13 +144,36 @@ active_codes: Ril 954.9101, VDE 0100-520
 deprecated_codes: Ril 954.0107, Ril 813.0202
 ```
 
-- `load_rules()` parses these `key: value` lines (last file wins per key)
-- `retrieve(query)` does keyword scoring over `## `-delimited prose sections
-  and returns the top-k excerpts for LLM grounding / chat replies
+- `load_rules()` parses these `key: value` lines (last file wins per key) —
+  always reads the **full** corpus; ingest-time analysis is not user-filterable
+- `retrieve(query, kb_ids=None)` does keyword scoring over `## `-delimited
+  prose sections and returns the top-k excerpts for LLM grounding / chat
+  replies
 
 **Adding a regulation = dropping a new `.md` file.** No code changes.
 To add a new *rule type*: add the key to `RuleSet` in `rag.py` and a check in
 `MockAgentClient.analyze()`.
+
+### Knowledge bases (`kb_ids`)
+
+Each immediate subdirectory of `data/regulations/` is its own named,
+independently selectable "knowledge base" (e.g. the pre-existing empty
+`DB/` → id `db`); loose top-level `*.md` files form the `general` KB.
+`list_knowledge_bases()` walks the filesystem live (not cached) — dropping a
+file into a KB directory takes effect on the next request, no restart
+needed. `retrieve(query, kb_ids=[...])` restricts retrieval to the given
+KBs; `kb_ids=None` means the union of **all** KBs — this is a deliberate
+widening of the pre-2026-07-29 behavior, which silently ignored
+subdirectories (`_read_corpus()` only globbed the top level). Byte-identical
+today since `DB/` is empty, but worth knowing: content dropped into a KB
+subdirectory is now picked up by any unfiltered `retrieve()` call, not just
+by an explicit `kb_ids=["db", ...]` one.
+
+The Engineer's Console (see `CAD_VIEWER_INTEGRATION.md` §9) is the only
+caller that ever passes an explicit `kb_ids` today, via
+`ChatRequest.knowledge_bases` → `POST /jobs/{id}/chat`. Everything else
+(`analyze()`, the mock agent's deprecated-code check, etc.) stays
+unfiltered/global by design.
 
 ## Testing
 

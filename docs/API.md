@@ -46,6 +46,32 @@ curl -F "file=@backend/data/samples/sample_plan.dxf" \
 
 ---
 
+### `GET /api/v1/jobs`
+
+Lightweight listing of recent jobs (most-recently-created first) — no
+`payload`/`report`, safe to fetch often. Backs the upload landing page's
+"Recent plans" list (`GET /api/v1/console`, below).
+
+- **Query:** `?limit=` (default 10)
+
+```json
+[{ "id": "0c91e588c5b4", "filename": "sample_plan.dxf", "status": "ready" }]
+```
+
+---
+
+### `GET /api/v1/console`
+
+Job-id-less upload landing page — drag-and-drop or pick any real
+`.dwg`/`.dxf`, no hardcoded sample involved. Uploads through
+`POST /api/v1/jobs` above, polls until `ready`, then redirects into that
+job's `GET /jobs/{job_id}/console` (below). Also lists recent plans via
+`GET /api/v1/jobs`. `make viewer` opens this by default; `make viewer
+FILE=path/to/plan.dwg` skips straight to a specific file. Design:
+[CAD_VIEWER_INTEGRATION.md](CAD_VIEWER_INTEGRATION.md) §9.
+
+---
+
 ### `GET /api/v1/jobs/{job_id}`
 
 Poll job state. `payload` appears once extraction finishes, `report` once the
@@ -172,15 +198,50 @@ payload, its compliance report, and retrieved regulation excerpts.
 conversational system prompt, and `ensure_prose()` server-side flattens any
 stray JSON and strips markdown markers before the reply leaves the API.
 
+`knowledge_bases` (optional) restricts regulation-excerpt grounding to the
+given knowledge-base ids (see `GET /api/v1/knowledge-bases` below); omit or
+pass `null` to ground on every knowledge base (default, unchanged from
+before this field existed). Browser-console-only — no Flutter UI for it.
+
 ```bash
 curl -X POST http://localhost:8000/api/v1/jobs/0c91e588c5b4/chat \
      -H "Content-Type: application/json" \
-     -d '{"message": "Check bending radii"}'
+     -d '{"message": "Check bending radii", "knowledge_bases": null}'
 ```
 
 ```json
 { "reply": "Current compliance state:\n- [non_compliant] Cable bending radius: 90 mm (expected >= 150 mm)\n..." }
 ```
+
+---
+
+### `GET /api/v1/knowledge-bases`
+
+Lists the named regulation-document knowledge bases available to scope
+`/chat` grounding to — one per immediate subdirectory of
+`backend/data/regulations/`, plus a `general` entry for loose top-level
+files. Live filesystem view, not cached. See `BACKEND.md`'s "Knowledge
+bases" section for the directory convention.
+
+```json
+[
+  { "id": "general", "name": "General", "doc_count": 1 },
+  { "id": "db", "name": "DB", "doc_count": 0 }
+]
+```
+
+---
+
+### `GET /api/v1/jobs/{job_id}/console`
+
+The Engineer's Console — a sidebar (chat, findings, search history,
+draftsman sketch, knowledge base) wrapped around the bare interactive
+viewer (`GET /jobs/{job_id}/viewer` / `POST /jobs/{job_id}/viewer/annotate`
+— self-contained pan/zoom/measure HTML export of the plan, agent output
+optionally baked in as real highlighted geometry). This is the primary way
+to use the browser viewer; `make viewer` opens it directly. Full endpoint
+reference and design: [CAD_VIEWER_INTEGRATION.md](CAD_VIEWER_INTEGRATION.md)
+§4 (architecture) and §9 (console).
 
 ## Data Contract
 
