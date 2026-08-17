@@ -37,10 +37,17 @@ def build_annotated_dxf(
             doc.layers.add(LOCATOR_HIT_LAYER, color=LOCATOR_HIT_COLOR)
         for hit in locate_hits:
             x0, y0, x1, y1 = hit.world_bbox
+            attribs = {"layer": LOCATOR_HIT_LAYER}
+            if hit.color:
+                # Per-entity true_color overrides the layer's ACI color for
+                # just this hit, so a single locate call can mix colors
+                # (e.g. re-highlighting one earlier hit differently) without
+                # needing a new layer per color.
+                attribs["true_color"] = int(hit.color.lstrip("#"), 16)
             msp.add_lwpolyline(
                 [(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
                 close=True,
-                dxfattribs={"layer": LOCATOR_HIT_LAYER},
+                dxfattribs=attribs,
             )
 
     if drawn_elements:

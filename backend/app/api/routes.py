@@ -149,7 +149,9 @@ def search_history(limit: int = 20) -> list[SearchRecord]:
 @router.post("/jobs/{job_id}/locate", response_model=LocateResponse)
 def locate_component(job_id: str, request: LocateRequest) -> LocateResponse:
     job = _processed_job(job_id)
-    result = locate(job.payload, request.query, load_render_meta(render_path_for(job_id)))
+    result = locate(
+        job.payload, request.query, load_render_meta(render_path_for(job_id)), request.color
+    )
     history.save_search(job.id, job.filename, request.query, len(result.hits))
     return result
 

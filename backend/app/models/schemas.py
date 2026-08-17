@@ -117,6 +117,10 @@ class KnowledgeBase(BaseModel):
 # --------------------------------------------------------------------------- #
 class LocateRequest(BaseModel):
     query: str
+    # Optional highlight color for this locate's hits - a color name ("red",
+    # "rot") or hex ("#e03131"/"e03131"), resolved by locator.py. Unset ->
+    # annotate.py's default ACI yellow highlight layer, unchanged.
+    color: str | None = None
 
 
 class LocateHit(BaseModel):
@@ -128,6 +132,10 @@ class LocateHit(BaseModel):
     world_bbox: tuple[float, float, float, float]  # min_x, min_y, max_x, max_y
     # normalized [0..1] rect on the render image, y-down; None if no render
     image_bbox: tuple[float, float, float, float] | None = None
+    # "#rrggbb", set from LocateRequest.color when given - per-hit so a
+    # client round-tripping hits into /viewer/annotate carries the color
+    # along with no extra state to track. None -> the default highlight color.
+    color: str | None = None
 
 
 class LocateResponse(BaseModel):
