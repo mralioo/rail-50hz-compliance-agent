@@ -3,11 +3,11 @@ job's DXF as real, highlighted entities on dedicated layers - so the
 cad-viewer export shows agent output as interactive geometry (pan/zoom/
 select it) instead of a raster overlay image.
 
-Kept separate from app.cad_engines: that framework is for engine-agnostic
-read/write round-trips (ParsedDrawing <-> DWG/DXF); this only ever feeds
-app.viewer.cad_viewer_export.export_html, so it uses ezdxf directly for
-per-layer color control (ACI colors), which ParsedDrawing/CadEngine.write()
-doesn't expose today.
+Kept separate from app.domain.cad/app.adapters.cad: that framework is for
+engine-agnostic read/write round-trips (ParsedDrawing <-> DWG/DXF); this
+only ever feeds app.viewer.cad_viewer_export.export_html, so it uses ezdxf
+directly for per-layer color control (ACI colors), which
+ParsedDrawing/CadEnginePort.write() doesn't expose today.
 """
 from pathlib import Path
 

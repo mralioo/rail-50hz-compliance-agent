@@ -1,8 +1,8 @@
 """CAD engine benchmark harness - the "test and change module to find the
-best combination" tool. Runs every registered engine (app/cad_engines/) in
-the same read / write / cross-read-back tests and prints a comparison
-table, so switching or combining engines is a config choice backed by
-numbers, not a guess. Findings get written up in
+best combination" tool. Runs every registered engine (app/adapters/cad/,
+wired in app/bootstrap.py) in the same read / write / cross-read-back tests
+and prints a comparison table, so switching or combining engines is a
+config choice backed by numbers, not a guess. Findings get written up in
 docs/CAD_ENGINE_FRAMEWORK.md; this script is how to reproduce or extend
 them (add a fixture, add an engine, re-run).
 
@@ -13,7 +13,8 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from app.cad_engines import ENGINES, EngineError, ParsedDrawing
+from app.bootstrap import CAD_ENGINES as ENGINES
+from app.domain.cad.ports import EngineError, ParsedDrawing
 from app.models.schemas import Geometry, TextItem
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "samples"

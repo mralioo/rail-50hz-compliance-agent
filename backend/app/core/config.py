@@ -15,7 +15,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _OPTIONAL_PATH_FIELDS = (
     "oda_converter_path", "dwg2dxf_path", "dxf2dwg_path",
     "dotnet_path", "acadsharp_cli_path", "qcadcmd_path",
-    "node_path", "cad_viewer_cli_path",
+    "node_path", "cad_viewer_cli_path", "freecadcmd_path",
+    "freecad_gui_path", "xpra_path",
 )
 
 
@@ -39,6 +40,21 @@ class Settings(BaseSettings):
 
     node_path: Path | None = None  # for cad-viewer export (tools/cad_viewer_cli)
     cad_viewer_cli_path: Path | None = None
+
+    freecadcmd_path: Path | None = None  # Craftsman agent (tools/freecad_worker), 2D geometry ops
+
+    # Craftsman "live" mode - the real FreeCAD GUI streamed into the browser
+    # via xpra's HTML5 client, so ops execute against one persistent
+    # document instead of a fresh one-shot subprocess per call. Optional,
+    # separate from freecadcmd_path above (a GUI-capable build + xpra, not
+    # just FreeCADCmd) - degrades to "not configured" if unset, same
+    # pattern as freecadcmd_path. See tools/freecad_worker/live_env/ and
+    # docs/CRAFTSMAN_AGENT.md.
+    freecad_gui_path: Path | None = None
+    xpra_path: Path | None = None
+    craftsman_live_op_port: int = 8765
+    craftsman_live_html_port: int = 8766
+    craftsman_live_display: str = ":100"
 
     @field_validator(*_OPTIONAL_PATH_FIELDS, mode="before")
     @classmethod
@@ -64,6 +80,19 @@ class Settings(BaseSettings):
     prompts_dir: Path = BACKEND_ROOT / "app" / "agent" / "prompts"
 
     cors_origins: list[str] = ["*"]
+
+    # --- OpenSearch / Neo4j KB evaluation (local Docker only; see
+    # docs/OPENSEARCH_NEO4J_EVALUATION.md). Not consumed by rag.py/routes.py
+    # yet — these back the standalone backend/app/kb/ evaluation harness.
+    opensearch_enabled: bool = False
+    opensearch_host: str = "http://localhost:9200"
+    opensearch_index: str = "rail50hz_regulations"
+    opensearch_embedding_provider: Literal["local", "openai"] = "local"
+
+    neo4j_enabled: bool = False
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str | None = None
 
 
 @lru_cache

@@ -1,0 +1,22 @@
+{
+  "projectId": "42ef972a-157c-40e8-8458-27785417a9eb",
+  "shape": "package",
+  "pkg": "webapp",
+  "globalName": "OmniDraft",
+  "buildCmd": "npm run build",
+  "srcDir": "src/components",
+  "cssEntry": "dist/assets/index-C7ZvKulm.css",
+  "extraEntries": [
+    "@tanstack/react-query",
+    "react-router-dom",
+    "./.design-sync/provider-setup.tsx"
+  ],
+  "provider": {
+    "component": "QueryClientProvider",
+    "props": { "client": { "$ref": "queryClient" } },
+    "inner": { "component": "MemoryRouter" }
+  },
+  "overrides": {
+    "JobStatusStepper": { "cardMode": "column" }
+  }
+}

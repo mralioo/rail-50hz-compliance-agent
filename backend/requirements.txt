@@ -8,16 +8,30 @@ pydantic-settings>=2.3
 # --- CAD extraction pipeline ---
 ezdxf>=1.3
 shapely>=2.0
-pandas>=2.2
 matplotlib>=3.9    # server-side plan rendering (ezdxf drawing add-on)
 
 # --- Testing ---
 pytest>=8.0
 httpx>=0.27
 
-# --- OpenAI (AGENT_MODE=openai + dataset summaries) ---
+# --- OpenAI (AGENT_MODE=openai) ---
 openai>=1.40
 
 # --- GCP / Vertex AI (only needed when AGENT_MODE=vertex) ---
 # google-genai>=1.0
 # google-cloud-storage>=2.16
+
+# --- Knowledge-store evaluation PoC (OpenSearch vector DB / Neo4j graph DB;
+# local Docker only, see docs/OPENSEARCH_NEO4J_EVALUATION.md) ---
+opensearch-py>=2.7
+neo4j>=5.24
+sentence-transformers>=3.0   # local embeddings (default); OpenAI is the opt-in alternative, already a dep
+
+# --- Project-document extraction (dataset/raw/ -> clean Markdown, see
+# app/ingestion/docling_pipeline.py). Installs cleanly on CPU-only hardware
+# (verified: ~5min, shares this repo's existing torch install with
+# sentence-transformers above); its ML layout+table pipeline is slow on
+# CPU (~15-22s/page measured) so docling_pipeline.py only runs it on
+# documents with real text density, not every PDF - see that module's
+# docstring. ---
+docling>=2.120

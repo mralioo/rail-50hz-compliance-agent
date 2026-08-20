@@ -1,0 +1,64 @@
+# docker-compose.kb.yml — local-only knowledge-store evaluation stack
+# (OpenSearch vector DB + Neo4j graph DB). NOT part of the Cloud Run
+# deployment path (deployment/Dockerfile) — this is a side-by-side PoC for
+# comparing vector vs graph retrieval over the regulation corpus. See
+# docs/OPENSEARCH_NEO4J_EVALUATION.md. Run via `make kb-up`.
+name: rail50hz-kb-eval
+
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true # local-dev only — never expose this port publicly
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      # OpenSearch >=2.12's demo-config installer refuses to start without this,
+      # even with the security plugin disabled above (hands-on finding, 2026-07-30).
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Rail50Hz-dev-1!
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.19.1
+    environment:
+      - 'OPENSEARCH_HOSTS=["http://opensearch:9200"]'
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-rail50hz-dev}
+    ports:
+      - "7474:7474" # Neo4j Browser — built-in visual layer
+      - "7687:7687" # Bolt (driver protocol)
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  opensearch-data:
+  neo4j-data:
+  neo4j-logs:

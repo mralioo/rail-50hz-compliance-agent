@@ -59,6 +59,16 @@ class FindingStatus(str, Enum):
     WARNING = "warning"
 
 
+class FindingReview(BaseModel):
+    """Engineer verify/flag state on a finding - separate from the agent's own
+    FindingStatus judgement. Not persisted beyond the in-memory JobStore (same
+    durability as everything else in this POC)."""
+
+    status: str = "pending"  # "pending" | "verified" | "flagged"
+    note: str | None = None
+    reviewed_by: str | None = None
+
+
 class Finding(BaseModel):
     status: FindingStatus
     parameter: str
@@ -67,6 +77,7 @@ class Finding(BaseModel):
     regulation: str
     location: str | None = None  # layer name or coordinates
     suggestion: str | None = None
+    review: FindingReview = Field(default_factory=FindingReview)
 
 
 class ComplianceReport(BaseModel):
@@ -84,6 +95,7 @@ class Job(BaseModel):
     error: str | None = None
     payload: DataLayerPayload | None = None
     report: ComplianceReport | None = None
+    created_at: str = ""  # ISO 8601, set once at JobStore.create - "Updated Xh ago" on project cards
 
 
 class JobSummary(BaseModel):
@@ -92,6 +104,13 @@ class JobSummary(BaseModel):
     id: str
     filename: str
     status: JobStatus
+    created_at: str = ""
+
+
+class FindingReviewRequest(BaseModel):
+    status: str  # "pending" | "verified" | "flagged"
+    note: str | None = None
+    reviewed_by: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -202,11 +221,12 @@ class DrawResponse(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# DWG manipulation (direct read/edit of the uploaded file via cad_engines)
+# DWG manipulation (direct read/edit of the uploaded file via a CadEnginePort
+# adapter, see app/domain/cad/ + app/adapters/cad/)
 # --------------------------------------------------------------------------- #
 class DwgReadResponse(BaseModel):
     source_file: str
-    engine: str  # which cad_engines engine produced this (e.g. "acadsharp")
+    engine: str  # which CadEnginePort adapter produced this (e.g. "acadsharp")
     layers: list[str]
     geometries: list[Geometry]
     texts: list[TextItem]
@@ -221,7 +241,7 @@ class DwgEditOp(BaseModel):
 
 class DwgManipulateRequest(BaseModel):
     edits: list[DwgEditOp]
-    engine: str = "acadsharp"  # cad_engines engine to read+write with
+    engine: str = "acadsharp"  # CadEnginePort adapter to read+write with
     version: str = "r2018"  # DWG version to write back (see CAD_ENGINE_FRAMEWORK.md)
 
 
@@ -232,6 +252,51 @@ class DwgManipulateResponse(BaseModel):
     geometries: list[Geometry]
     texts: list[TextItem]
     download_url: str  # GET this path for the manipulated .dwg
+
+
+# --------------------------------------------------------------------------- #
+# Craftsman agent (real 2D geometry ops via FreeCAD - offset/fillet/join;
+# see docs/CRAFTSMAN_AGENT.md). Distinct from DwgEditOp above: those are flat
+# add/remove of raw entities, these are genuine geometry transforms neither
+# ezdxf nor ACadSharp can do.
+# --------------------------------------------------------------------------- #
+class CraftsmanOp(BaseModel):
+    op: str  # "upgrade_objects" | "offset_wire" | "fillet_wire"
+    # id/ids may be "$prev", meaning "the object the previous op in THIS
+    # ops list created" - resolved by the worker (tools/freecad_worker/
+    # worker.py). Only meaningful within one call: each POST /craftsman
+    # re-reads the original upload from scratch, so an id from a prior call
+    # doesn't exist in this one - $prev is how a multi-step SOP chains ops
+    # without the caller predicting FreeCAD's own object-naming.
+    ids: list[str] | None = None  # upgrade_objects: object ids to join
+    id: str | None = None  # offset_wire / fillet_wire: object id to transform
+    delta: list[float] | None = None  # offset_wire: [dx, dy, (dz)] in mm
+    radius: float | None = None  # fillet_wire: corner radius in mm
+    edge_indices: list[int] | None = None  # fillet_wire: the 2 adjacent edges to round
+
+
+class CraftsmanRequest(BaseModel):
+    ops: list[CraftsmanOp]
+    dwg_version: str = "r2018"  # DWG version to write back (see CAD_ENGINE_FRAMEWORK.md)
+
+
+class CraftsmanLiveStartResponse(BaseModel):
+    """Real, embeddable FreeCAD GUI - see live_bridge.py/live_session.py and
+    docs/CRAFTSMAN_AGENT.md. `html_url` is xpra's HTML5 client, put it in an
+    iframe."""
+
+    html_url: str
+
+
+class CraftsmanResponse(BaseModel):
+    layers: list[str]
+    geometries: list[Geometry]
+    texts: list[TextItem]
+    objects: list[dict]  # {id, kind, layer} per geometry/text, same order - the
+    # ids to target in a follow-up call's offset_wire/fillet_wire/upgrade_objects
+    op_results: list[dict]  # per-op {op, ok, detail} - surfaces partial failures
+    warnings: list[str]  # e.g. entities dropped for corrupt coordinates - see worker.py
+    download_url: str  # GET this path for the manipulated .dwg (same route as /dwg/download)
 
 
 # --------------------------------------------------------------------------- #
