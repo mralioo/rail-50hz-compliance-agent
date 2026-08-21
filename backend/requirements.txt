@@ -27,11 +27,9 @@ opensearch-py>=2.7
 neo4j>=5.24
 sentence-transformers>=3.0   # local embeddings (default); OpenAI is the opt-in alternative, already a dep
 
-# --- Project-document extraction (dataset/raw/ -> clean Markdown, see
-# app/ingestion/docling_pipeline.py). Installs cleanly on CPU-only hardware
-# (verified: ~5min, shares this repo's existing torch install with
-# sentence-transformers above); its ML layout+table pipeline is slow on
-# CPU (~15-22s/page measured) so docling_pipeline.py only runs it on
-# documents with real text density, not every PDF - see that module's
-# docstring. ---
-docling>=2.120
+# --- Project-document extraction (dataset/raw/ -> clean Markdown + images, see
+# app/ingestion/docling_pipeline.py). Extraction now runs on the remote Docling
+# *server* (DOCLING_BASE_URL) via its async HTTP API, so no local ML pipeline /
+# torch is needed here - only an HTTP client (httpx, above) and Pillow to crop
+# individual pictures out of the server's full-page renders. ---
+Pillow>=10.0

@@ -3,9 +3,9 @@ produced by app.ingestion.docling_pipeline) - parallel to app.kb.corpus,
 which is regulation-specific (H2-only split, active_codes/supersession
 regex tuned to that corpus's markdown convention and not applicable here).
 
-Project documents get real Markdown heading structure from Docling (Tier 1)
-or are a single fenced-code stub (Tier 2, see docling_pipeline.convert_tier2)
-- so chunking here splits on any heading level (`^#+ `), not just H2.
+Project documents get real Markdown heading structure from the Docling
+server (plus an "Extracted images" reference section) - so chunking here
+splits on any heading level (`^#+ `), not just H2.
 """
 import re
 from dataclasses import dataclass

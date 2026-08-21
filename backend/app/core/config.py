@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     regulations_dir: Path = BACKEND_ROOT / "data" / "regulations"
     prompts_dir: Path = BACKEND_ROOT / "app" / "agent" / "prompts"
 
+    # --- Docling document-extraction service (dataset/raw -> clean Markdown +
+    # images; see app.ingestion.docling_pipeline). Runs the ML pipeline on a
+    # remote server so there is no local CPU cost. ---
+    docling_base_url: str = "http://10.0.1.236/docling"
+    docling_chunk_max_tokens: int = 512
+    docling_images_scale: float = 2.0
+    embedding_model: str = "intfloat/multilingual-e5-large"
+
     cors_origins: list[str] = ["*"]
 
     # --- OpenSearch / Neo4j KB evaluation (local Docker only; see
