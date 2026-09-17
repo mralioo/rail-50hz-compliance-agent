@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64">
+  <!-- Mark: rail-switch chevron + signal node, offset to the left of a two-tier wordmark. -->
+  <g transform="translate(0, 0)">
+    <path
+      d="M10 50 L32 12 L54 50"
+      stroke="#29E0FF"
+      stroke-width="5"
+      fill="none"
+      stroke-linejoin="round"
+      stroke-linecap="round"
+    />
+    <line x1="15" y1="40" x2="49" y2="40" stroke="#29E0FF" stroke-width="4" stroke-linecap="round" />
+    <line x1="10" y1="50" x2="54" y2="50" stroke="#F5B23D" stroke-width="4" stroke-linecap="round" />
+    <circle cx="32" cy="12" r="5" fill="#29E0FF" />
+  </g>
+
+  <!-- Two-tier wordmark: general platform brand over the vertical module. -->
+  <text
+    x="72"
+    y="30"
+    font-family="Arial, Helvetica, sans-serif"
+    font-weight="700"
+    font-size="22"
+    letter-spacing="1"
+    fill="#dfe4ea"
+  >OMNIDRAFT</text>
+  <text
+    x="72"
+    y="48"
+    font-family="ui-monospace, Consolas, monospace"
+    font-weight="500"
+    font-size="13"
+    letter-spacing="2"
+    fill="#29E0FF"
+  >GLEIS OS</text>
+</svg>

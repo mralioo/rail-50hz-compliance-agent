@@ -250,6 +250,13 @@ backend/tools/vendor/
 # install chromium` per docs/CAD_VIEWER_INTEGRATION.md
 backend/tools/cad_viewer_cli/node_modules/
 
+# freecad-cli — vendored (own .git) from github.com/yoshikouki/freecad-cli, a
+# dev-only debugging tool for the Craftsman live/xpra session, per
+# docs/CRAFTSMAN_AGENT.md's "Debugging with freecad-cli" section. Re-clone with
+# `cd backend/tools && git clone https://github.com/yoshikouki/freecad-cli.git`
+# if needed — never vendor its own .git into this repo.
+backend/tools/freecad-cli/
+
 # Editors & OS
 .vscode/
 .idea/

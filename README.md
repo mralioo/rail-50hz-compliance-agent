@@ -7,7 +7,10 @@ extracted parameters against DB Ril / VDE guidelines — catching template drift
 (retired guideline citations) and physical violations (bending radii, pulling
 forces) before they reach EBA review. Ships with two front ends: a Flutter
 desktop app and a zero-install browser console with an interactive 3D CAD
-viewer.
+viewer — plus **OmniDraft · GLEIS OS** (`webapp/`), a React product shell
+that wraps everything above into a branded SaaS-style app (landing page,
+dashboard, workspace) for demoing the product as a whole. See
+[docs/WEBAPP.md](docs/WEBAPP.md).
 
 ## Documentation
 
@@ -29,7 +32,7 @@ complete index. Highlights:
 | **Pipeline orchestrator** | Background job: convert → extract → compute metrics → agent analysis, in-memory `JobStore` | `backend/app/pipeline/` |
 | **Ingestion + extraction** | DWG→DXF conversion, robust DXF parsing (`ezdxf.recover`), geometry/metric math (`shapely`) | `backend/app/ingestion/`, `backend/app/extraction/` |
 | **Compliance agent** | Rule-based (`mock`), OpenAI, or Vertex AI Gemini client; grounded in the regulation corpus + optional Cognee memory | `backend/app/agent/` |
-| **CAD engine framework** | One `CadEngine` interface behind which ezdxf, LibreDWG, ACadSharp (.NET), and QCAD all read/write DXF/DWG — powers the raw `/jobs/{id}/dwg` read+edit+download API | `backend/app/cad_engines/`, `backend/tools/` |
+| **CAD engine framework** | One `CadEnginePort` interface behind which ezdxf, LibreDWG, ACadSharp (.NET), and QCAD all read/write DXF/DWG — powers the raw `/jobs/{id}/dwg` read+edit+download API | `backend/app/domain/cad/`, `backend/app/adapters/cad/`, `backend/tools/` |
 | **Interactive browser viewer** | Wraps the open-source `mlightcad/cad-viewer` (Three.js/WebGL) into a self-contained, pannable/zoomable HTML export of any plan — no Flutter required | `backend/app/viewer/` |
 | **Engineer's Console** | Browser sidebar around that viewer: chat, locate-and-highlight, findings triage, search history, draftsman click-to-sketch, knowledge-base selector, and a drag-and-drop upload landing page | `backend/app/viewer/assets/console_shell.html`, `console_upload.html` |
 | **Flutter Planner's Playground** | Desktop/web three-panel app: canvas + data table + chat console, same backend API | `frontend/lib/` |
@@ -81,6 +84,10 @@ make viewer FILE=path/to/plan.dwg    # or upload a specific file directly
 cd frontend && flutter pub get
 make frontend         # flutter run -d linux
 
+# 2c. OmniDraft · GLEIS OS web shell instead/as well — separate terminal
+make webapp-install   # first time only
+make webapp            # Vite dev server on http://localhost:5173
+
 # 3. Demo: drop sample_plan.dxf into either front end. The agent flags:
 #    - "Ril 954.0107" citation      → template drift (retired guideline)
 #    - R=90mm bending radius        → below the 150 mm minimum
@@ -118,7 +125,7 @@ Run tests with `make test`.
 [ComplianceReport JSON]  → findings + Erläuterungsbericht summary
 
 Separately, on demand:
-[cad_engines framework] → raw DWG/DXF read + structured edits + real .dwg
+[domain/cad + adapters/cad] → raw DWG/DXF read + structured edits + real .dwg
                             write-back (independent of the extraction pipeline)
 [app/viewer]             → interactive HTML export (mlightcad/cad-viewer),
                             with locator hits / draftsman sketches baked in
@@ -136,8 +143,8 @@ backend/
     ingestion/    upload staging, DWG→DXF conversion, DXF→DWG write-back
     extraction/   DXF parsing (ezdxf) + spatial math (shapely) + PNG renderer
     agent/        agent clients, locator/analyzer/draftsman agents, mini-RAG
-    cad_engines/  engine-agnostic DWG/DXF read/write framework (ezdxf/
-                   LibreDWG/ACadSharp/QCAD behind one CadEngine interface)
+    domain/cad/   engine-agnostic DWG/DXF port (CadEnginePort, ParsedDrawing)
+    adapters/cad/ ezdxf/LibreDWG/ACadSharp/QCAD implementations of that port
     viewer/       interactive cad-viewer export + Engineer's Console (HTML/JS)
     memory/       search history (SQLite) + Cognee guideline memory bridge
     pipeline/     job store + end-to-end orchestrator
@@ -207,8 +214,8 @@ gcloud builds submit --config deployment/cloudbuild.yaml .
   embeddings for real semantic retrieval.
 - **More CAD entities:** add cases in `extraction/dxf_parser.py`; the
   `Geometry` schema and canvas painter already handle new kinds generically.
-- **More CAD engines / DWG fidelity:** implement `CadEngine`
-  (`cad_engines/base.py`) and register it in `cad_engines/registry.py`.
+- **More CAD engines / DWG fidelity:** implement `CadEnginePort`
+  (`domain/cad/ports.py`) and register it in `bootstrap.py`'s `CAD_ENGINES`.
 - **Persistence/scale-out:** replace the in-memory `JobStore`
   (`pipeline/orchestrator.py`) with Firestore/Redis.
 - **Other OS:** the Flutter app is scaffolded for Linux, macOS, Windows and

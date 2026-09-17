@@ -167,6 +167,16 @@
 
   const locateIntentRe = /\b(where|wo\b|locate|zeig|zeige|markiere|highlight|show me|find the|finde)\b/i;
   const drawIntentRe = /\b(draw|zeichne|verbinde|connect|sketch)\b/i;
+  // Any locate/highlight request may also name a highlight color ("...in
+  // red" / "...rot markieren") - matched here, client-side, so the raw word
+  // (not a JS color table) is sent straight to locator.py's NAMED_COLORS,
+  // one place to keep the color vocabulary in sync.
+  const colorWordRe = /#[0-9a-fA-F]{3,6}|\b(red|rot|orange|yellow|gelb|green|grün|gruen|blue|blau|cyan|türkis|tuerkis|teal|turquoise|purple|violet|lila|magenta|pink|rosa|white|weiss|weiß|black|schwarz|gray|grey|grau|amber|lime|navy)\b/i;
+
+  function extractColor(text) {
+    const m = text.match(colorWordRe);
+    return m ? m[0] : null;
+  }
 
   // ---- tabs ----------------------------------------------------------------
   document.querySelectorAll("#tabs button").forEach(btn => {
@@ -252,12 +262,17 @@
     appendChat("user", text);
     chatSend.disabled = true;
 
+    // Locate/draw intents are intercepted here, BEFORE the /chat (Compliance
+    // Analyst) fallback below - the Compliance Analyst has no viewer access
+    // and must never be the one asked to find/draw/highlight a component
+    // (see chat.md's "no viewer access" rule, the backstop for phrasing this
+    // regex doesn't catch). Keep this ordering.
     if (pendingSketchPoints.length >= 2 && drawIntentRe.test(text)) {
       runDraw(text).finally(() => { chatSend.disabled = false; });
       return;
     }
     if (locateIntentRe.test(text)) {
-      runLocate(text).finally(() => { chatSend.disabled = false; });
+      runLocate(text, extractColor(text)).finally(() => { chatSend.disabled = false; });
       return;
     }
     fetch(API + "/chat", {
@@ -272,11 +287,11 @@
   }
 
   // ---- locate + findings --------------------------------------------------
-  function runLocate(query) {
+  function runLocate(query, color) {
     return fetch(API + "/locate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, color }),
     })
       .then(r => r.json())
       .then(data => {
@@ -285,8 +300,9 @@
         hitAnalyses = {};
         hitDescriptions = {};
         expandedHits = new Set();
+        const colorNote = color && lastHits.length ? ` (highlighted in ${color})` : "";
         appendChat("agent", lastHits.length
-          ? `Found ${lastHits.length} match(es) for "${query}" — see Findings.`
+          ? `Found ${lastHits.length} match(es) for "${query}"${colorNote} — see Findings.`
           : `No matches found for "${query}".`);
         renderFindings();
         switchTab("findings");

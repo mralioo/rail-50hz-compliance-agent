@@ -5,6 +5,7 @@ dev). Swap `JobStore` for Firestore/Redis when scaling out.
 """
 import threading
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.agent.client import get_agent
@@ -28,13 +29,25 @@ def viewer_path_for(job_id: str) -> Path:
     return get_settings().work_dir / job_id / "viewer.html"
 
 
+def craftsman_dxf_path_for(job_id: str) -> Path:
+    return get_settings().work_dir / job_id / "craftsman.dxf"
+
+
+def craftsman_viewer_path_for(job_id: str) -> Path:
+    return get_settings().work_dir / job_id / "craftsman_viewer.html"
+
+
 class JobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
 
     def create(self, filename: str) -> Job:
-        job = Job(id=uuid.uuid4().hex[:12], filename=filename)
+        job = Job(
+            id=uuid.uuid4().hex[:12],
+            filename=filename,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
         with self._lock:
             self._jobs[job.id] = job
         return job
@@ -51,6 +64,10 @@ class JobStore:
         """Most-recently-created first (insertion order, dict is ordered)."""
         with self._lock:
             return list(reversed(list(self._jobs.values())))[:limit]
+
+    def delete(self, job_id: str) -> bool:
+        with self._lock:
+            return self._jobs.pop(job_id, None) is not None
 
 
 job_store = JobStore()

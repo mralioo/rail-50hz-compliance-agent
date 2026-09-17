@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/*
+ * Unified OmniDraft · GLEIS OS color tokens.
+ * Sourced from two existing artifacts in this repo rather than invented
+ * fresh: the pitch-deck mark ("GLEIS-OS Pitch (standalone).html" — navy
+ * #0A0E1A / cyan #29E0FF / amber #F5B23D) and the already-shipped Engineer's
+ * Console ("backend/app/viewer/assets/console_shell.html" — bg #0b0d10/
+ * #12151a, border #262b33/#2e3540, text #dfe4ea/#8a92a1, accent #4ea1ff,
+ * error #e0463a). The console's separate blue accent is folded into one
+ * cyan accent (--color-accent) so the embedded iframe in Workspace reads as
+ * part of the same product, not a bolted-on tool.
+ */
+@theme {
+  --color-navy-950: #0a0e1a;
+  --color-navy-900: #0b0d10;
+  --color-navy-800: #12151a;
+  --color-navy-700: #1a1e26;
+  --color-line: #262b33;
+  --color-line-light: #2e3540;
+
+  --color-ink-primary: #dfe4ea;
+  --color-ink-secondary: #8a92a1;
+  --color-ink-muted: #6b7383;
+
+  --color-accent: #29e0ff;
+  --color-accent-dim: #1c9fb5;
+  --color-amber: #f5b23d;
+  --color-danger: #e0463a;
+
+  --font-sans: -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-navy-950);
+  color: var(--color-ink-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

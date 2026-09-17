@@ -8,16 +8,40 @@ pydantic-settings>=2.3
 # --- CAD extraction pipeline ---
 ezdxf>=1.3
 shapely>=2.0
-pandas>=2.2
 matplotlib>=3.9    # server-side plan rendering (ezdxf drawing add-on)
 
 # --- Testing ---
 pytest>=8.0
 httpx>=0.27
 
-# --- OpenAI (AGENT_MODE=openai + dataset summaries) ---
+# --- OpenAI (AGENT_MODE=openai) ---
 openai>=1.40
 
 # --- GCP / Vertex AI (only needed when AGENT_MODE=vertex) ---
 # google-genai>=1.0
 # google-cloud-storage>=2.16
+
+# --- Knowledge-store evaluation PoC (OpenSearch vector DB / Neo4j graph DB;
+# local Docker only, see docs/OPENSEARCH_NEO4J_EVALUATION.md) ---
+opensearch-py>=2.7
+neo4j>=5.24
+sentence-transformers>=3.0   # local embeddings (default); OpenAI is the opt-in alternative, already a dep
+
+# --- Project-document extraction (dataset/raw/ -> clean Markdown + images, see
+# app/application/documents/). Extraction now runs on the remote Docling
+# *server* (DOCLING_BASE_URL) via its async HTTP API, so no local ML pipeline /
+# torch is needed here - only an HTTP client (httpx, above) and Pillow to crop
+# individual pictures out of the server's full-page renders. ---
+Pillow>=10.0
+
+# --- Embedding visualization (scripts/project_kb_export_atlas.py + Apple's
+# Embedding Atlas, https://github.com/apple/embedding-atlas). Exports the
+# already-indexed vectors from the local OpenSearch KB eval stack (§9.3,
+# OPENSEARCH_NEO4J_EVALUATION.md) to Parquet, then `embedding-atlas` computes
+# a UMAP 2D projection + launches an interactive local viewer. Heaviest
+# optional dependency in this file (pulls its own sentence-transformers/torch
+# stack even though we pass --vector to skip re-embedding - only used for
+# `make visualize-embeddings`, not the running backend). ---
+pandas>=2.2
+pyarrow>=16.0
+embedding-atlas>=0.9

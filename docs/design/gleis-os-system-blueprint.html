@@ -1,0 +1,945 @@
+<!doctype html>
+<title>GLEIS·OS — System Blueprint</title>
+<style>
+  /* ── Tokens ──────────────────────────────────────────────────────────
+     Single committed visual world (deliberate, not an omission): this
+     document is the technical companion to the GLEIS·OS pitch deck, which
+     itself is fixed-dark. Breaking to a light theme here would read as a
+     different product. Palette extends the deck's navy/cyan/amber with two
+     dedicated semantic colors (guardrail-green, risk-red) kept distinct
+     from the cyan/amber brand accents.
+  ------------------------------------------------------------------------ */
+  :root{
+    --bg:#080b14; --bg-grid:#0b0f1c;
+    --panel:#101728; --panel-2:#0c1220; --panel-soft:#131b30;
+    --line:#1d2740; --line-soft:#161f34;
+    --ink:#e8ecf6; --ink-dim:#8a96b0; --ink-faint:#4d5872;
+    --cyan:#2fe1ff; --cyan-dim:#1a4e5c;
+    --amber:#f6b44a; --amber-dim:#5c4520;
+    --good:#3adda0; --good-dim:#164536;
+    --critical:#ff6b6b; --critical-dim:#4a1f24;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --maxw: 1180px;
+    --rail-w: 15rem;
+  }
+  *{box-sizing:border-box;}
+  html{background:var(--bg);}
+  body{
+    margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+    font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 42px 42px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 0%, transparent 75%);
+            mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 0%, transparent 75%);
+    opacity:.55;
+  }
+  a{color:var(--cyan); text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  ::selection{background:var(--cyan-dim); color:#fff;}
+  :focus-visible{outline:2px solid var(--cyan); outline-offset:2px; border-radius:3px;}
+
+  h1,h2,h3,h4{font-family:var(--sans); font-weight:800; letter-spacing:-.01em; text-wrap:balance; margin:0;}
+  p{margin:0;}
+  .eyebrow{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--cyan); display:flex; align-items:center; gap:.6em; margin:0 0 .9em;
+  }
+  .eyebrow::before{content:""; width:1.4em; height:1px; background:var(--cyan); display:inline-block; opacity:.7;}
+  .eyebrow.amber{color:var(--amber);} .eyebrow.amber::before{background:var(--amber);}
+  .eyebrow.good{color:var(--good);} .eyebrow.good::before{background:var(--good);}
+
+  .prose{max-width:62ch;}
+  .prose p + p{margin-top:.85em;}
+  .prose-wide{max-width:74ch;}
+  .lede{font-size:1.15rem; color:var(--ink); max-width:56ch;}
+  .dim{color:var(--ink-dim);}
+  .mono{font-family:var(--mono);}
+  code, .tag{
+    font-family:var(--mono); font-size:.82em; background:var(--panel-2);
+    border:1px solid var(--line); border-radius:5px; padding:.1em .45em;
+    color:var(--ink);
+  }
+
+  /* ── Status pills (semantic, distinct from brand accent) ───────────── */
+  .pill{
+    display:inline-flex; align-items:center; gap:.5em; font-family:var(--mono);
+    font-size:.68rem; letter-spacing:.06em; text-transform:uppercase;
+    padding:.32em .7em; border-radius:100px; border:1px solid transparent; white-space:nowrap;
+  }
+  .pill-dot{width:6px; height:6px; border-radius:50%; flex:none;}
+  .pill.built{ background:var(--good-dim); color:#8ff5cf; border-color:#1f5a45;}
+  .pill.built .pill-dot{ background:var(--good); box-shadow:0 0 0 3px rgba(58,221,160,.18); animation:pulse 2.4s ease-in-out infinite;}
+  .pill.partial{ background:var(--amber-dim); color:#ffd699; border-color:#6b501f;}
+  .pill.partial .pill-dot{ background:var(--amber);}
+  .pill.planned{ background:var(--panel-2); color:var(--ink-dim); border-color:var(--line);}
+  .pill.planned .pill-dot{ background:var(--ink-faint);}
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  /* ── Shell / layout ─────────────────────────────────────────────────── */
+  .shell{position:relative; z-index:1; display:flex;}
+  .rail{
+    width:var(--rail-w); flex:none; position:sticky; top:0; height:100vh;
+    padding:2.2rem 0 2rem 2.2rem; display:flex; flex-direction:column; gap:1.6rem;
+  }
+  .rail-brand{display:flex; align-items:center; gap:.6rem;}
+  .rail-brand .mark{width:26px; height:26px; flex:none;}
+  .rail-brand .word{font-family:var(--mono); font-weight:700; font-size:.95rem; letter-spacing:.08em;}
+  .rail-nav{display:flex; flex-direction:column; gap:.05rem; overflow-y:auto; padding-right:.6rem; margin-top:.4rem;}
+  .rail-nav a{
+    font-family:var(--mono); font-size:.76rem; color:var(--ink-faint); padding:.5em .2em;
+    border-left:2px solid transparent; padding-left:.9em; text-decoration:none;
+    transition:color .15s, border-color .15s;
+  }
+  .rail-nav a:hover{color:var(--ink-dim);}
+  .rail-nav a.active{color:var(--cyan); border-left-color:var(--cyan);}
+  .rail-foot{margin-top:auto; font-family:var(--mono); font-size:.68rem; color:var(--ink-faint); line-height:1.6; padding-right:1rem;}
+
+  main{flex:1; min-width:0; padding:0 2.4rem 6rem;}
+  .wrap{max-width:var(--maxw); margin:0 auto;}
+  section{padding:5.2rem 0; border-bottom:1px solid var(--line-soft);}
+  section:last-of-type{border-bottom:none;}
+  .section-head{display:flex; align-items:flex-start; justify-content:space-between; gap:2rem; margin-bottom:2.6rem; flex-wrap:wrap;}
+  .section-head h2{font-size:2.1rem;}
+  .reveal{opacity:0; transform:translateY(14px); transition:opacity .6s ease, transform .6s ease;}
+  .reveal.in{opacity:1; transform:none;}
+  @media (prefers-reduced-motion: reduce){
+    .reveal{opacity:1; transform:none; transition:none;}
+  }
+
+  /* ── Hero ────────────────────────────────────────────────────────────*/
+  .hero{padding:5.5rem 0 4rem; border-bottom:1px solid var(--line-soft);}
+  .hero .kicker{font-family:var(--mono); font-size:.78rem; letter-spacing:.14em; color:var(--ink-dim); text-transform:uppercase; margin-bottom:1.4rem;}
+  .hero h1{font-size:clamp(2.4rem, 4.4vw, 3.6rem); line-height:1.05; margin-bottom:1.3rem;}
+  .hero h1 em{font-style:normal; color:var(--cyan);}
+  .hero .lede{margin-bottom:2.2rem;}
+  .legend{display:flex; gap:1.4rem; flex-wrap:wrap; margin-top:2.4rem; padding-top:1.6rem; border-top:1px solid var(--line-soft);}
+  .legend-item{display:flex; align-items:center; gap:.6em; font-family:var(--mono); font-size:.74rem; color:var(--ink-dim);}
+
+  /* ── Big-picture flow diagram ────────────────────────────────────── */
+  .flowpanel{
+    background:linear-gradient(180deg, var(--panel-soft), var(--panel-2));
+    border:1px solid var(--line); border-radius:16px; padding:2.4rem 1.6rem;
+    overflow-x:auto;
+  }
+  .flow-svg{display:block; margin:0 auto; min-width:920px;}
+  .node-box{fill:var(--panel); stroke:var(--line); stroke-width:1;}
+  .node-box.cyan{stroke:var(--cyan);}
+  .node-box.amber{stroke:var(--amber);}
+  .node-box.good{stroke:var(--good);}
+  .node-box.dim{stroke:var(--line); opacity:.55; stroke-dasharray:3 3;}
+  .node-title{font-family:var(--sans); font-weight:700; fill:var(--ink); font-size:13px;}
+  .node-sub{font-family:var(--mono); fill:var(--ink-dim); font-size:10.5px;}
+  .flow-label{font-family:var(--mono); fill:var(--ink-faint); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;}
+  .edge{fill:none; stroke:var(--line); stroke-width:1.4;}
+  .edge.cyan{stroke:var(--cyan); stroke-dasharray:5 5; animation:dash 3.2s linear infinite;}
+  .edge.amber{stroke:var(--amber); stroke-dasharray:5 5; animation:dash 3.2s linear infinite;}
+  .edge.good{stroke:var(--good); stroke-dasharray:5 5; animation:dash 3.6s linear infinite;}
+  @keyframes dash{ to{ stroke-dashoffset:-40; } }
+  .packet{ r:3.2; fill:var(--cyan); filter:drop-shadow(0 0 4px var(--cyan)); }
+  .packet.amber{ fill:var(--amber); filter:drop-shadow(0 0 4px var(--amber)); }
+  .packet.good{ fill:var(--good); filter:drop-shadow(0 0 4px var(--good)); }
+  @media (prefers-reduced-motion: reduce){
+    .edge.cyan,.edge.amber,.edge.good{ animation:none; }
+    .packet{ animation:none !important; offset-distance:50% !important; }
+  }
+
+  /* ── Two-col ─────────────────────────────────────────────────────── */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:3rem; align-items:start;}
+  @media (max-width: 900px){ .cols{grid-template-columns:1fr;} }
+  .cols.narrow-right{grid-template-columns:1.1fr .9fr;}
+
+  /* ── Agent cards ─────────────────────────────────────────────────── */
+  .agent-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(270px,1fr)); gap:1.1rem;}
+  .agent-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.4rem 1.4rem 1.5rem;
+    display:flex; flex-direction:column; gap:.85rem; position:relative; overflow:hidden;
+  }
+  .agent-card::before{
+    content:""; position:absolute; inset:0 0 auto 0; height:2px;
+    background:linear-gradient(90deg, transparent, var(--card-accent, var(--cyan)), transparent);
+    opacity:.7;
+  }
+  .agent-card .top{display:flex; align-items:flex-start; justify-content:space-between; gap:.6rem;}
+  .agent-card .name{font-weight:800; font-size:1.02rem;}
+  .agent-card .role{color:var(--ink-dim); font-size:.86rem; line-height:1.5;}
+  .agent-card .meta{display:flex; flex-direction:column; gap:.35rem; margin-top:auto; font-family:var(--mono); font-size:.72rem;}
+  .agent-card .meta div{display:flex; gap:.5em;}
+  .agent-card .meta b{color:var(--ink-faint); font-weight:600; min-width:4.4em; flex:none;}
+  .agent-card .meta span{color:var(--ink-dim);}
+  .agent-card .file{font-family:var(--mono); font-size:.7rem; color:var(--ink-faint);}
+
+  /* ── Sequence / swimlane diagrams ────────────────────────────────── */
+  .seq{border:1px solid var(--line); border-radius:14px; background:var(--panel-2); padding:1.8rem 1.2rem; overflow-x:auto;}
+  .seq-svg{display:block; margin:0 auto;}
+  .lane-label{font-family:var(--mono); font-size:10.5px; fill:var(--ink-dim); text-transform:uppercase; letter-spacing:.05em;}
+  .lane-line{stroke:var(--line); stroke-width:1;}
+  .msg-arrow{stroke:var(--cyan); stroke-width:1.4; fill:none;}
+  .msg-arrow.amber{stroke:var(--amber);}
+  .msg-arrow.good{stroke:var(--good);}
+  .msg-arrow.dim{stroke:var(--ink-faint); stroke-dasharray:3 3;}
+  .msg-text{font-family:var(--mono); font-size:10px; fill:var(--ink); }
+  .msg-num{font-family:var(--mono); font-size:9.5px; fill:var(--bg); font-weight:700;}
+  .step-chip{fill:var(--ink-faint); stroke:var(--line);}
+  .step-chip.cyan{fill:var(--cyan); stroke:var(--cyan);} .step-chip.amber{fill:var(--amber); stroke:var(--amber);} .step-chip.good{fill:var(--good); stroke:var(--good);}
+
+  /* ── Guardrail / RAG diagram ─────────────────────────────────────── */
+  .kb-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:2.4rem; align-items:center;}
+  @media (max-width: 900px){ .kb-grid{grid-template-columns:1fr;} }
+  .kb-folders{display:flex; flex-direction:column; gap:.6rem;}
+  .kb-folder{
+    display:flex; align-items:center; gap:.8rem; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:.75rem 1rem; font-family:var(--mono); font-size:.82rem;
+  }
+  .kb-folder .swatch{width:9px; height:9px; border-radius:2px; flex:none;}
+  .kb-folder .n{color:var(--ink-dim); margin-left:auto; font-size:.76rem;}
+
+  .citation-card{
+    background:var(--panel-2); border:1px solid var(--good); border-radius:12px; padding:1.1rem 1.2rem;
+    font-size:.86rem; color:var(--ink-dim); margin-top:1.2rem;
+  }
+  .citation-card b{color:var(--good); font-family:var(--mono); font-size:.74rem; text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:.5em;}
+
+  /* ── Stat row ────────────────────────────────────────────────────── */
+  .stat-row{display:grid; grid-template-columns:repeat(3,1fr); gap:1.2rem; margin-top:2rem;}
+  @media (max-width:800px){ .stat-row{grid-template-columns:1fr;} }
+  .stat{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:1.2rem 1.3rem;}
+  .stat .num{font-family:var(--mono); font-size:1.7rem; font-weight:700; color:var(--cyan); font-variant-numeric:tabular-nums;}
+  .stat .cap{color:var(--ink-dim); font-size:.82rem; margin-top:.3em;}
+
+  /* ── Data contract cards (low-level) ─────────────────────────────── */
+  .contract-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:1rem;}
+  .contract{background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:1rem 1.1rem; font-family:var(--mono); font-size:.76rem;}
+  .contract .cname{color:var(--cyan); font-weight:700; margin-bottom:.6em; font-size:.82rem;}
+  .contract .field{color:var(--ink-dim); display:flex; gap:.4em; padding:.15em 0;}
+  .contract .field .k{color:var(--ink);}
+  .contract .field .t{color:var(--ink-faint); margin-left:auto;}
+
+  /* ── Constitution / guardrail statements ─────────────────────────── */
+  .constitution{display:grid; grid-template-columns:repeat(2,1fr); gap:1rem;}
+  @media (max-width:800px){ .constitution{grid-template-columns:1fr;} }
+  .commandment{
+    background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--amber);
+    border-radius:0 10px 10px 0; padding:1.1rem 1.3rem; font-size:.95rem; color:var(--ink);
+  }
+  .commandment span{display:block; font-family:var(--mono); font-size:.68rem; color:var(--amber); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.5em;}
+
+  /* ── Roadmap table ───────────────────────────────────────────────── */
+  .roadmap{width:100%; border-collapse:collapse; font-size:.9rem;}
+  .roadmap th{
+    text-align:left; font-family:var(--mono); font-size:.7rem; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--ink-faint); padding:.6rem .9rem; border-bottom:1px solid var(--line);
+  }
+  .roadmap td{padding:.85rem .9rem; border-bottom:1px solid var(--line-soft); vertical-align:top;}
+  .roadmap tr:last-child td{border-bottom:none;}
+  .roadmap .item{font-weight:700; color:var(--ink);}
+  .roadmap .desc{color:var(--ink-dim); font-size:.86rem; margin-top:.2em;}
+  .table-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:12px;}
+  .table-wrap .roadmap{min-width:640px;}
+
+  /* ── Footer ──────────────────────────────────────────────────────── */
+  footer{padding:3.5rem 0 1rem; text-align:center;}
+  footer .word{font-family:var(--mono); letter-spacing:.1em; color:var(--ink-dim); font-size:.82rem;}
+  footer .line{color:var(--ink-faint); font-size:.78rem; margin-top:.6em;}
+
+  @media (max-width: 860px){
+    .rail{display:none;}
+    main{padding:0 1.2rem 4rem;}
+  }
+</style>
+
+<div class="shell">
+  <nav class="rail" aria-label="Section navigation">
+    <div class="rail-brand">
+      <svg class="mark" viewBox="0 0 32 32" fill="none"><path d="M6 24 L16 8 L26 24" stroke="#2fe1ff" stroke-width="3" stroke-linejoin="round"/><line x1="6" y1="19" x2="26" y2="19" stroke="#2fe1ff" stroke-width="2.4"/><line x1="6" y1="24" x2="26" y2="24" stroke="#f6b44a" stroke-width="2"/></svg>
+      <span class="word">GLEIS·OS</span>
+    </div>
+    <div class="rail-nav" id="railNav">
+      <a href="#hero" data-nav>Blueprint</a>
+      <a href="#today" data-nav>System today</a>
+      <a href="#agents" data-nav>Meet the agents</a>
+      <a href="#comms-now" data-nav>How they talk (now)</a>
+      <a href="#comms-next" data-nav>How they'll talk (next)</a>
+      <a href="#guardrail" data-nav>Knowledge as guardrail</a>
+      <a href="#cad-agent" data-nav>The CAD agent</a>
+      <a href="#lowlevel" data-nav>Low-level design</a>
+      <a href="#principles" data-nav>Guardrail principles</a>
+      <a href="#roadmap" data-nav>Roadmap</a>
+    </div>
+    <div class="rail-foot">
+      System Blueprint v1<br>Companion to the GLEIS·OS pitch<br>Draft for internal use
+    </div>
+  </nav>
+
+  <main>
+    <div class="wrap">
+
+      <!-- ══════════════════════ HERO ══════════════════════ -->
+      <section class="hero" id="hero">
+        <div class="kicker">System Blueprint · Internal · Not for distribution</div>
+        <h1 class="reveal">The agentic OS behind GLEIS·OS —<br><em>what's running, how it talks, what's next.</em></h1>
+        <p class="lede reveal">The pitch deck describes the destination. This document is the map of the road already
+          laid: the agents that exist today and what they actually do, how they pass messages to each other now versus
+          how a real multi-agent protocol will let them, why the knowledge base is a guardrail and not a search box,
+          and the biggest unbuilt piece — an agent that edits the DWG itself, under supervision.</p>
+        <div class="legend reveal">
+          <div class="legend-item"><span class="pill built"><span class="pill-dot"></span>Built</span> running today, verified end-to-end</div>
+          <div class="legend-item"><span class="pill partial"><span class="pill-dot"></span>Partial</span> the pieces exist, not yet connected as designed</div>
+          <div class="legend-item"><span class="pill planned"><span class="pill-dot"></span>Planned</span> designed here, not started</div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════ SYSTEM TODAY ══════════════════════ -->
+      <section id="today">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow">01 · The big picture</div>
+            <h2>One engineer, two front doors, one system underneath.</h2>
+          </div>
+          <div class="prose dim" style="max-width:26ch; padding-top:.4rem;">Everything below the fold on this section runs today, on real DWG/DXF files.</div>
+        </div>
+
+        <div class="flowpanel reveal">
+          <svg class="flow-svg" viewBox="0 0 940 300" width="940" height="300">
+            <!-- front doors -->
+            <rect class="node-box cyan" x="20" y="30" width="170" height="56" rx="10"/>
+            <text class="node-title" x="105" y="55" text-anchor="middle">Flutter App</text>
+            <text class="node-sub" x="105" y="72" text-anchor="middle">desktop / web</text>
+
+            <rect class="node-box cyan" x="20" y="210" width="170" height="56" rx="10"/>
+            <text class="node-title" x="105" y="235" text-anchor="middle">Browser Console</text>
+            <text class="node-sub" x="105" y="252" text-anchor="middle">chat · sketch · KB picker</text>
+
+            <!-- gateway -->
+            <rect class="node-box cyan" x="255" y="118" width="180" height="64" rx="10" fill="var(--panel)" stroke-width="1.6"/>
+            <text class="node-title" x="345" y="145" text-anchor="middle">FastAPI Gateway</text>
+            <text class="node-sub" x="345" y="163" text-anchor="middle">one process · REST + JSON</text>
+
+            <!-- pipeline -->
+            <rect class="node-box" x="485" y="30" width="190" height="56" rx="10"/>
+            <text class="node-title" x="580" y="52" text-anchor="middle">Pipeline</text>
+            <text class="node-sub" x="580" y="69" text-anchor="middle">convert → extract → analyze</text>
+
+            <!-- agents -->
+            <rect class="node-box" x="485" y="118" width="190" height="64" rx="10"/>
+            <text class="node-title" x="580" y="143" text-anchor="middle">Compliance / Locator /</text>
+            <text class="node-title" x="580" y="158" text-anchor="middle">Analyzer / Draftsman agents</text>
+
+            <!-- KB -->
+            <rect class="node-box good" x="485" y="212" width="190" height="56" rx="10"/>
+            <text class="node-title" x="580" y="234" text-anchor="middle">Knowledge base + memory</text>
+            <text class="node-sub" x="580" y="251" text-anchor="middle">regulation corpus · Cognee</text>
+
+            <!-- CAD engines + viewer -->
+            <rect class="node-box amber" x="735" y="30" width="185" height="56" rx="10"/>
+            <text class="node-title" x="827" y="52" text-anchor="middle">CAD engine framework</text>
+            <text class="node-sub" x="827" y="69" text-anchor="middle">ezdxf · LibreDWG · ACadSharp</text>
+
+            <rect class="node-box amber" x="735" y="118" width="185" height="64" rx="10"/>
+            <text class="node-title" x="827" y="143" text-anchor="middle">Interactive viewer</text>
+            <text class="node-sub" x="827" y="160" text-anchor="middle">cad-viewer · 3D pan/zoom</text>
+
+            <rect class="node-box dim" x="735" y="212" width="185" height="56" rx="10"/>
+            <text class="node-title" x="827" y="234" text-anchor="middle" opacity="0.7">DWG write-back</text>
+            <text class="node-sub" x="827" y="251" text-anchor="middle">manual edits only, today</text>
+
+            <!-- edges -->
+            <path class="edge cyan" d="M190,58 C220,58 220,140 255,140"/>
+            <path class="edge cyan" d="M190,238 C220,238 220,150 255,150"/>
+            <path class="edge cyan" d="M435,140 C455,140 465,60 485,58"/>
+            <path class="edge cyan" d="M435,150 C455,150 465,150 485,150"/>
+            <path class="edge good" d="M435,160 C455,160 465,240 485,240"/>
+            <path class="edge amber" d="M675,58 C700,58 710,58 735,58"/>
+            <path class="edge amber" d="M675,150 C700,150 710,150 735,150"/>
+            <path class="edge" d="M675,240 C700,240 710,240 735,240" stroke-dasharray="3 3" opacity="0.5"/>
+
+            <circle class="packet" r="3.2"><animateMotion dur="3.4s" repeatCount="indefinite" path="M190,58 C220,58 220,140 255,140"/></circle>
+            <circle class="packet" r="3.2"><animateMotion dur="3.8s" repeatCount="indefinite" begin="0.6s" path="M435,140 C455,140 465,60 485,58"/></circle>
+            <circle class="packet good" r="3.2"><animateMotion dur="3s" repeatCount="indefinite" begin="0.3s" path="M435,160 C455,160 465,240 485,240"/></circle>
+            <circle class="packet amber" r="3.2"><animateMotion dur="2.6s" repeatCount="indefinite" path="M675,150 C700,150 710,150 735,150"/></circle>
+          </svg>
+        </div>
+
+        <div class="cols" style="margin-top:2.4rem;">
+          <div class="prose">
+            <p><b style="color:var(--ink)">There is one backend process, not a swarm — yet.</b> A FastAPI gateway
+            receives the upload, runs it through a background pipeline (DWG→DXF, geometry extraction, metric
+            math), and hands the result to whichever agent a request needs. Both front doors — the Flutter desktop
+            app and the zero-install browser console — talk to the exact same API.</p>
+          </div>
+          <div class="prose">
+            <p>The <span class="tag">CAD engine framework</span> and the <span class="tag">interactive viewer</span>
+            are the newest layer: a plan can now be read, rendered, and lightly annotated without Flutter at all —
+            and a raw <code>.dwg</code> can be read/edited/written through four interchangeable engines. What's
+            <em style="color:var(--amber); font-style:normal;">not</em> built yet is the agent that decides
+            <em style="color:var(--amber); font-style:normal;">what</em> to write — see §07.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════ MEET THE AGENTS ══════════════════════ -->
+      <section id="agents">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow">02 · The roster</div>
+            <h2>Eight agents. Four are running. Two exist in pieces. Two are on the drawing board.</h2>
+          </div>
+        </div>
+        <p class="prose-wide dim reveal" style="margin-bottom:2.4rem;">Every card below is a real module in the codebase,
+          not an aspiration — the file path is printed on the ones that exist. "Reads" and "writes" describe its actual
+          inputs/outputs today, in plain terms.</p>
+
+        <div class="agent-grid reveal">
+
+          <div class="agent-card" style="--card-accent:var(--good)">
+            <span class="pill built"><span class="pill-dot"></span>Built</span>
+            <div class="top"><div class="name">Compliance Agent</div></div>
+            <div class="role">Answers the engineer's questions about a plan and screens its numbers against DB Ril / VDE
+              limits. Three interchangeable backends: a free rule-checker, and two LLM-backed versions for open
+              conversation.</div>
+            <div class="meta">
+              <div><b>Reads</b><span>plan metrics, compliance report, regulation excerpts, memory</span></div>
+              <div><b>Writes</b><span>chat reply, or a findings report</span></div>
+            </div>
+            <div class="file">app/agent/client.py</div>
+          </div>
+
+          <div class="agent-card" style="--card-accent:var(--good)">
+            <span class="pill built"><span class="pill-dot"></span>Built</span>
+            <div class="top"><div class="name">Locator Agent</div></div>
+            <div class="role">Turns "where is the Schaltraum?" into an exact, confidence-scored box on the actual
+              drawing — by matching text, annotations and layer names, not guessing coordinates.</div>
+            <div class="meta">
+              <div><b>Reads</b><span>the question, plan text/annotations/layers</span></div>
+              <div><b>Writes</b><span>a scored hit with real world coordinates</span></div>
+            </div>
+            <div class="file">app/agent/locator.py</div>
+          </div>
+
+          <div class="agent-card" style="--card-accent:var(--good)">
+            <span class="pill built"><span class="pill-dot"></span>Built</span>
+            <div class="top"><div class="name">Analyzer Agent</div></div>
+            <div class="role">Gives a free, deterministic triage of anything the Locator found — entity counts, layers
+              present — before a single token is spent on an AI description. The paid step is opt-in, per click, and
+              cached.</div>
+            <div class="meta">
+              <div><b>Reads</b><span>a located hit + the plan's geometry</span></div>
+              <div><b>Writes</b><span>counts/layers, or a one-line AI description</span></div>
+            </div>
+            <div class="file">app/agent/analyzer.py</div>
+          </div>
+
+          <div class="agent-card" style="--card-accent:var(--good)">
+            <span class="pill built"><span class="pill-dot"></span>Built</span>
+            <div class="top"><div class="name">Draftsman Agent</div></div>
+            <div class="role">Connects points the engineer clicks into a labeled cable-run sketch, with computed
+              length and the relevant bending-radius / pulling-force reminder — an overlay, never touching the source
+              file.</div>
+            <div class="meta">
+              <div><b>Reads</b><span>clicked points + a plain instruction</span></div>
+              <div><b>Writes</b><span>a labeled line + length + rule note</span></div>
+            </div>
+            <div class="file">app/agent/draftsman.py</div>
+          </div>
+
+          <div class="agent-card" style="--card-accent:var(--good)">
+            <span class="pill built"><span class="pill-dot"></span>Built</span>
+            <div class="top"><div class="name">Knowledge Steward</div></div>
+            <div class="role">Not a chat persona — the shared grounding service every other agent is required to
+              consult. Serves regulation excerpts from selectable knowledge bases, plus an optional long-term memory
+              of past guideline lookups.</div>
+            <div class="meta">
+              <div><b>Reads</b><span>a query + which knowledge base(s) are selected</span></div>
+              <div><b>Writes</b><span>ranked excerpts, always with their source file</span></div>
+            </div>
+            <div class="file">app/agent/rag.py · app/memory/cognee_store.py</div>
+          </div>
+
+          <div class="agent-card" style="--card-accent:var(--amber)">
+            <span class="pill partial"><span class="pill-dot"></span>Partial</span>
+            <div class="top"><div class="name">Orchestrator / Router</div></div>
+            <div class="role">Today this is a regex in the browser tab guessing "is this a locate, a sketch, or a
+              question?", plus whichever API route the click hit. It works, but it is not a reasoning agent that
+              plans, sequences, or retries — see §04.</div>
+            <div class="meta">
+              <div><b>Reads</b><span>the raw chat message</span></div>
+              <div><b>Writes</b><span>a routing decision, not a plan</span></div>
+            </div>
+            <div class="file">console_shell.html (client-side)</div>
+          </div>
+
+          <div class="agent-card" style="--card-accent:var(--ink-faint)">
+            <span class="pill planned"><span class="pill-dot"></span>Planned</span>
+            <div class="top"><div class="name">CAD Manipulation Agent</div></div>
+            <div class="role">Takes an instruction, retrieves the governing SOP/Richtlinie, and plans the exact DWG
+              edit that satisfies it — instead of the engineer supplying the edit by hand. The centerpiece of §07.</div>
+            <div class="meta">
+              <div><b>Reads</b><span>instruction + retrieved SOP + current DWG</span></div>
+              <div><b>Writes</b><span>a proposed edit plan, not a written file</span></div>
+            </div>
+            <div class="file">cad_engines/ exists · agent layer does not</div>
+          </div>
+
+          <div class="agent-card" style="--card-accent:var(--ink-faint)">
+            <span class="pill planned"><span class="pill-dot"></span>Planned</span>
+            <div class="top"><div class="name">Verification Agent</div></div>
+            <div class="role">The last guardrail before anything reaches the engineer or gets written: re-checks a
+              proposed edit or finding against the same regulation corpus plus geometric clearance rules.</div>
+            <div class="meta">
+              <div><b>Reads</b><span>a proposed edit or finding + the KB</span></div>
+              <div><b>Writes</b><span>pass / flag, with the violated clause cited</span></div>
+            </div>
+            <div class="file">not started</div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ══════════════════════ COMMS: NOW ══════════════════════ -->
+      <section id="comms-now">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow">03 · Communication, today</div>
+            <h2>Right now, "agents talking" means function calls inside one process.</h2>
+          </div>
+        </div>
+        <div class="cols narrow-right">
+          <div class="prose-wide reveal">
+            <p>This is worth saying plainly, because the pitch deck's diagram of an Orchestrator dispatching to five
+            named agents describes the <em style="color:var(--cyan); font-style:normal;">target</em> shape, not
+            today's reality. Today, every "agent" is a Python module that a FastAPI route handler calls directly and
+            waits on, in the same process, on the same machine. There is no message bus, no agent identity, no retry
+            policy — just an HTTP request in, a JSON response out.</p>
+            <p>The closest thing to orchestration that exists is client-side: a small set of regular expressions in
+            the browser console guess whether a typed message is a question, a "where is" query, or a sketch
+            instruction, and call the matching endpoint. It works well for a single-user prototype. It does not
+            scale to agents that need to call <em>each other</em>, negotiate, or run in parallel.</p>
+          </div>
+          <div class="seq reveal">
+            <svg class="seq-svg" viewBox="0 0 380 300" width="380" height="300">
+              <text class="lane-label" x="20" y="20">ENGINEER</text>
+              <text class="lane-label" x="150" y="20">CONSOLE JS</text>
+              <text class="lane-label" x="270" y="20">FASTAPI + AGENT FN</text>
+              <line class="lane-line" x1="35" y1="30" x2="35" y2="280"/>
+              <line class="lane-line" x1="165" y1="30" x2="165" y2="280"/>
+              <line class="lane-line" x1="320" y1="30" x2="320" y2="280"/>
+
+              <text class="msg-text" x="45" y="58">"where is the Schaltraum?"</text>
+              <path class="msg-arrow" d="M35,66 H165" marker-end="url(#arrM)"/>
+
+              <text class="msg-text" x="175" y="98">regex match: locate-intent</text>
+              <path class="msg-arrow dim" d="M165,74 v30 H165" />
+
+              <text class="msg-text" x="175" y="128">POST /jobs/{id}/locate</text>
+              <path class="msg-arrow" d="M165,136 H320" marker-end="url(#arrM)"/>
+
+              <text class="msg-text" x="175" y="168">locator.py runs, in-process</text>
+
+              <text class="msg-text" x="175" y="198">200 · LocateHit[] json</text>
+              <path class="msg-arrow good" d="M320,206 H165" marker-end="url(#arrM2)"/>
+
+              <text class="msg-text" x="175" y="228">POST /viewer/annotate</text>
+              <path class="msg-arrow" d="M165,236 H320" marker-end="url(#arrM)"/>
+
+              <text class="msg-text" x="45" y="266">highlighted box appears</text>
+              <path class="msg-arrow good" d="M320,258 H35" marker-end="url(#arrM2)"/>
+
+              <defs>
+                <marker id="arrM" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--cyan)"/></marker>
+                <marker id="arrM2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--good)"/></marker>
+              </defs>
+            </svg>
+            <div class="dim" style="font-family:var(--mono); font-size:.72rem; text-align:center; margin-top:.6rem;">one HTTP round trip per step · no agent-to-agent hop</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════ COMMS: NEXT ══════════════════════ -->
+      <section id="comms-next">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow amber">04 · Communication, target</div>
+            <h2>The industry has settled on two protocols. We should adopt both.</h2>
+          </div>
+        </div>
+        <div class="prose-wide reveal" style="margin-bottom:2rem;">
+          <p>2025–26 converged on a clean split, now backed by production usage at scale: <b style="color:var(--ink)">MCP
+          (Model Context Protocol)</b> standardizes how one agent calls <em>tools and data sources</em> — a CAD
+          engine, a search index, a database. <b style="color:var(--ink)">A2A (Agent-to-Agent)</b>, originally
+          Google's, now governed by the Linux Foundation with over 150 production adopters, standardizes how one agent
+          calls <em>another agent as a peer</em> rather than as a tool — with its own task, its own confidence, its
+          own right to say "I need more information."</p>
+          <p>For GLEIS·OS that means: the Orchestrator speaks A2A to the CAD Agent, the Norms Agent, the Calc Agent and
+          the Verification Agent as peers; each of <em>those</em> speaks MCP downward to its own tools — the CAD
+          engine framework, the knowledge base, the geometry math. One protocol for "agent asks agent," one for "agent
+          uses tool." Not a rebuild — a wrapper around modules that already exist.</p>
+        </div>
+
+        <div class="flowpanel reveal">
+          <svg class="flow-svg" viewBox="0 0 940 340" width="940" height="340">
+            <text class="flow-label" x="470" y="24" text-anchor="middle">A2A · AGENT ↔ AGENT (PEER)</text>
+            <rect class="node-box cyan" x="380" y="40" width="180" height="60" rx="10" stroke-width="1.6"/>
+            <text class="node-title" x="470" y="66" text-anchor="middle">Orchestrator</text>
+            <text class="node-sub" x="470" y="83" text-anchor="middle">plans · routes · retries</text>
+
+            <rect class="node-box" x="60" y="150" width="150" height="56" rx="10"/>
+            <text class="node-title" x="135" y="172" text-anchor="middle">Norms Agent</text>
+            <text class="node-sub" x="135" y="189" text-anchor="middle">compliance / RAG</text>
+
+            <rect class="node-box" x="240" y="150" width="150" height="56" rx="10"/>
+            <text class="node-title" x="315" y="172" text-anchor="middle">CAD Agent</text>
+            <text class="node-sub" x="315" y="189" text-anchor="middle">§07</text>
+
+            <rect class="node-box" x="420" y="150" width="150" height="56" rx="10"/>
+            <text class="node-title" x="495" y="172" text-anchor="middle">Calc Agent</text>
+            <text class="node-sub" x="495" y="189" text-anchor="middle">clearances · load</text>
+
+            <rect class="node-box" x="600" y="150" width="150" height="56" rx="10"/>
+            <text class="node-title" x="675" y="172" text-anchor="middle">Verification Agent</text>
+            <text class="node-sub" x="675" y="189" text-anchor="middle">last check before write</text>
+
+            <rect class="node-box amber" x="780" y="150" width="150" height="56" rx="10"/>
+            <text class="node-title" x="855" y="172" text-anchor="middle">Engineer console</text>
+            <text class="node-sub" x="855" y="189" text-anchor="middle">human-in-loop</text>
+
+            <text class="flow-label" x="470" y="252" text-anchor="middle">MCP · AGENT → TOOL / DATA</text>
+            <rect class="node-box good" x="90" y="268" width="150" height="52" rx="10"/>
+            <text class="node-title" x="165" y="288" text-anchor="middle">Knowledge base</text>
+            <text class="node-sub" x="165" y="304" text-anchor="middle">RAG corpus</text>
+
+            <rect class="node-box good" x="280" y="268" width="150" height="52" rx="10"/>
+            <text class="node-title" x="355" y="288" text-anchor="middle">CAD engine fw</text>
+            <text class="node-sub" x="355" y="304" text-anchor="middle">ezdxf/LibreDWG/ACadSharp</text>
+
+            <rect class="node-box good" x="700" y="268" width="150" height="52" rx="10"/>
+            <text class="node-title" x="775" y="288" text-anchor="middle">Audit trail</text>
+            <text class="node-sub" x="775" y="304" text-anchor="middle">every proposal + decision</text>
+
+            <!-- A2A edges (cyan, hub and spoke) -->
+            <path class="edge cyan" d="M400,100 C300,120 220,130 135,150"/>
+            <path class="edge cyan" d="M440,100 C400,120 360,130 315,150"/>
+            <path class="edge cyan" d="M500,100 C500,120 500,130 495,150"/>
+            <path class="edge cyan" d="M545,100 C600,120 650,130 675,150"/>
+            <path class="edge amber" d="M580,90 C700,100 800,120 855,150"/>
+            <!-- MCP edges (green, downward) -->
+            <path class="edge good" d="M135,206 C140,230 155,250 165,268"/>
+            <path class="edge good" d="M315,206 C320,230 340,250 355,268"/>
+            <path class="edge good" d="M675,206 C690,230 720,250 775,268"/>
+
+            <circle class="packet" r="3"><animateMotion dur="2.8s" repeatCount="indefinite" path="M400,100 C300,120 220,130 135,150"/></circle>
+            <circle class="packet" r="3"><animateMotion dur="3.2s" repeatCount="indefinite" begin=".4s" path="M545,100 C600,120 650,130 675,150"/></circle>
+            <circle class="packet amber" r="3"><animateMotion dur="3.6s" repeatCount="indefinite" begin=".8s" path="M580,90 C700,100 800,120 855,150"/></circle>
+            <circle class="packet good" r="3"><animateMotion dur="2.4s" repeatCount="indefinite" path="M315,206 C320,230 340,250 355,268"/></circle>
+            <circle class="packet good" r="3"><animateMotion dur="2.6s" repeatCount="indefinite" begin=".5s" path="M675,206 C690,230 720,250 775,268"/></circle>
+          </svg>
+        </div>
+        <p class="dim reveal" style="font-family:var(--mono); font-size:.76rem; text-align:center; margin-top:1rem;">
+          cyan = A2A (peer request) · green = MCP (tool/data call) · amber = human checkpoint
+        </p>
+      </section>
+
+      <!-- ══════════════════════ GUARDRAIL / RAG ══════════════════════ -->
+      <section id="guardrail">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow good">05 · The knowledge base</div>
+            <h2>RAG isn't a search feature here — it's the guardrail.</h2>
+          </div>
+        </div>
+        <div class="kb-grid reveal">
+          <div class="prose-wide">
+            <p>Every regulation-grounded answer in the system is required to trace back to an actual retrieved passage
+            from a named file — never a number the model "remembers" from training. That single rule is what turns a
+            general-purpose language model into something a certified engineer can rely on for a legally-mandated
+            document.</p>
+            <p>Today the knowledge base is a set of folders — <code>general</code>, <code>db</code> — each a
+            selectable "knowledge base" an engineer can scope a question to. Retrieval is straightforward keyword
+            matching over those files, plus an optional long-term memory layer that can recall past guideline lookups
+            semantically. Independent published research on this class of system backs the approach: grounding
+            answers in retrieved source text measurably cuts hallucination, and governed, traceable retrieval is what
+            makes an AI-assisted answer auditable at all.</p>
+            <p>The guardrail only holds if the corpus is real and current — a stale or incomplete knowledge base
+            produces confident, cited, <em>wrong</em> answers just as easily. Curating it is product work, not a
+            one-time ingestion.</p>
+          </div>
+          <div>
+            <div class="kb-folders">
+              <div class="kb-folder"><span class="swatch" style="background:var(--good)"></span>general/ <span class="n">db_ril_954_9101.md</span></div>
+              <div class="kb-folder"><span class="swatch" style="background:var(--cyan)"></span>db/ <span class="n">DB Netz-specific Richtlinien</span></div>
+              <div class="kb-folder"><span class="swatch" style="background:var(--amber)"></span>vde/ <span class="n">planned</span></div>
+            </div>
+            <div class="citation-card">
+              <b>What a grounded reply looks like</b>
+              "The cable bending radius requirement is a minimum of 150&nbsp;mm, as stated in <span class="mono" style="color:var(--good)">DB Ril 954.9101 §4.2</span>.
+              The current plan indicates a bending radius of 90&nbsp;mm, which does not meet this requirement."
+              <div class="dim" style="margin-top:.7em; font-size:.78em;">— an actual reply from the running system, citing the actual retrieved clause.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════ CAD AGENT (centerpiece) ══════════════════════ -->
+      <section id="cad-agent">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow amber">06 · The unbuilt centerpiece</div>
+            <h2>Today the CAD engine executes edits. Nothing yet decides <em style="color:var(--amber); font-style:normal;">what</em> to edit.</h2>
+          </div>
+        </div>
+
+        <div class="cols reveal" style="margin-bottom:2.6rem;">
+          <div class="prose-wide">
+            <div class="eyebrow good">Built today</div>
+            <p>A engine-agnostic <code>CadEngine</code> interface sits behind four real implementations (ezdxf,
+            LibreDWG, ACadSharp, QCAD). An API endpoint reads a DWG's layers/geometry/text, accepts a list of
+            structured edits — add or remove a piece of geometry or text — and writes a genuinely new
+            <code>.dwg</code> file back through ACadSharp, the one engine proven to round-trip DWG reliably.</p>
+            <p><b style="color:var(--ink)">The gap: a human still has to supply the exact edit.</b> There is no
+            agent reading "extend the earthing run to the new signal mast" and producing that structured edit itself
+            — only the mechanism to execute one once it's already been specified.</p>
+          </div>
+          <div class="prose-wide">
+            <div class="eyebrow amber">The vision</div>
+            <p>An agent that takes a plain-language instruction, retrieves the governing SOP or Richtlinie for that
+            exact kind of change, drafts the structured DWG edit that satisfies it, and routes the proposal through a
+            Verification Agent — checking clearances and norms against the <em>same</em> knowledge base — before a
+            human ever sees it. Only after sign-off does the CAD engine write anything.</p>
+            <p>This is the loop the pitch deck's "human-in-the-loop" circle describes, made concrete for one specific,
+            high-value action: <em style="color:var(--cyan); font-style:normal;">touching the actual drawing.</em></p>
+          </div>
+        </div>
+
+        <div class="seq reveal">
+          <svg class="seq-svg" viewBox="0 0 1080 520" width="1080" height="520">
+            <text class="lane-label" x="40" y="24">ENGINEER</text>
+            <text class="lane-label" x="215" y="24">ORCHESTRATOR</text>
+            <text class="lane-label" x="410" y="24">KNOWLEDGE BASE</text>
+            <text class="lane-label" x="605" y="24">CAD AGENT</text>
+            <text class="lane-label" x="790" y="24">VERIFICATION AGENT</text>
+            <text class="lane-label" x="985" y="24">CAD ENGINE</text>
+            <line class="lane-line" x1="60" y1="36" x2="60" y2="500"/>
+            <line class="lane-line" x1="235" y1="36" x2="235" y2="500"/>
+            <line class="lane-line" x1="430" y1="36" x2="430" y2="500"/>
+            <line class="lane-line" x1="625" y1="36" x2="625" y2="500"/>
+            <line class="lane-line" x1="815" y1="36" x2="815" y2="500"/>
+            <line class="lane-line" x1="1005" y1="36" x2="1005" y2="500"/>
+
+            <!-- step 1 -->
+            <circle class="step-chip cyan" cx="60" cy="60" r="11"/><text class="msg-num" x="60" y="64" text-anchor="middle">1</text>
+            <text class="msg-text" x="75" y="56">"add earthing run, cabinet 2 →</text>
+            <text class="msg-text" x="75" y="70">rail, per SOP-14"</text>
+            <path class="msg-arrow" d="M60,80 H235" marker-end="url(#arrM3)"/>
+
+            <!-- step 2 -->
+            <circle class="step-chip cyan" cx="235" cy="120" r="11"/><text class="msg-num" x="235" y="124" text-anchor="middle">2</text>
+            <text class="msg-text" x="250" y="116">retrieve SOP-14 + earthing</text>
+            <text class="msg-text" x="250" y="130">Richtlinie clause</text>
+            <path class="msg-arrow" d="M235,140 H430" marker-end="url(#arrM3)"/>
+
+            <!-- step 3 -->
+            <circle class="step-chip good" cx="430" cy="180" r="11"/><text class="msg-num" x="430" y="184" text-anchor="middle">3</text>
+            <text class="msg-text" x="445" y="176">cited clause + min. clearance</text>
+            <text class="msg-text" x="445" y="190">+ conductor sizing rule</text>
+            <path class="msg-arrow good" d="M430,200 H235" marker-end="url(#arrM4)"/>
+
+            <!-- step 4 -->
+            <circle class="step-chip cyan" cx="235" cy="240" r="11"/><text class="msg-num" x="235" y="244" text-anchor="middle">4</text>
+            <text class="msg-text" x="250" y="236">delegate: draft the edit,</text>
+            <text class="msg-text" x="250" y="250">grounded in that clause</text>
+            <path class="msg-arrow" d="M235,260 H625" marker-end="url(#arrM3)"/>
+
+            <!-- step 5 -->
+            <circle class="step-chip cyan" cx="625" cy="300" r="11"/><text class="msg-num" x="625" y="304" text-anchor="middle">5</text>
+            <text class="msg-text" x="640" y="296">proposed DwgEditOp[]:</text>
+            <text class="msg-text" x="640" y="310">add_geometry(PLINE, 30_ERDUNG)</text>
+            <path class="msg-arrow" d="M625,320 H815" marker-end="url(#arrM3)"/>
+
+            <!-- step 6 -->
+            <circle class="step-chip amber" cx="815" cy="360" r="11"/><text class="msg-num" x="815" y="364" text-anchor="middle">6</text>
+            <text class="msg-text" x="750" y="356" text-anchor="end">check clearance + norm —</text>
+            <text class="msg-text" x="750" y="370" text-anchor="end">against the same KB</text>
+            <path class="msg-arrow amber" d="M815,380 H60" marker-end="url(#arrM5)"/>
+            <text class="msg-text" x="75" y="396" style="fill:var(--amber)">proposal + rationale + citation → approve / reject</text>
+
+            <!-- step 7 -->
+            <circle class="step-chip amber" cx="60" cy="430" r="11"/><text class="msg-num" x="60" y="434" text-anchor="middle">7</text>
+            <text class="msg-text" x="75" y="426">engineer approves</text>
+            <path class="msg-arrow amber" d="M60,450 H1005" marker-end="url(#arrM5)"/>
+
+            <!-- step 8 -->
+            <circle class="step-chip good" cx="1005" cy="480" r="11"/><text class="msg-num" x="1005" y="484" text-anchor="middle">8</text>
+            <text class="msg-text" x="870" y="476">real .dwg written · new version</text>
+            <text class="msg-text" x="870" y="490">logged to the data flywheel</text>
+
+            <defs>
+              <marker id="arrM3" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--cyan)"/></marker>
+              <marker id="arrM4" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M8,0 L0,4 L8,8 Z" fill="var(--good)"/></marker>
+              <marker id="arrM5" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--amber)"/></marker>
+            </defs>
+          </svg>
+        </div>
+        <p class="dim reveal" style="font-family:var(--mono); font-size:.76rem; text-align:center; margin-top:1rem;">
+          nothing reaches step 8 without step 6's citation and step 7's human approval — the write is the very last thing that happens.
+        </p>
+      </section>
+
+      <!-- ══════════════════════ LOW LEVEL DESIGN ══════════════════════ -->
+      <section id="lowlevel">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow">07 · Low-level design</div>
+            <h2>For whoever builds this next: the real contracts.</h2>
+          </div>
+        </div>
+        <p class="prose-wide dim reveal" style="margin-bottom:2rem;">Skip this section unless you're the one writing
+          code. Every shape below already exists in <code>backend/app/models/schemas.py</code> and is the actual
+          wire format flowing between the front end and the API today.</p>
+
+        <div class="contract-grid reveal">
+          <div class="contract">
+            <div class="cname">Job</div>
+            <div class="field"><span class="k">id</span><span class="t">str</span></div>
+            <div class="field"><span class="k">status</span><span class="t">queued→ready</span></div>
+            <div class="field"><span class="k">filename</span><span class="t">str</span></div>
+            <div class="field"><span class="k">payload</span><span class="t">DataLayerPayload?</span></div>
+            <div class="field"><span class="k">report</span><span class="t">ComplianceReport?</span></div>
+          </div>
+          <div class="contract">
+            <div class="cname">LocateHit</div>
+            <div class="field"><span class="k">label</span><span class="t">str</span></div>
+            <div class="field"><span class="k">confidence</span><span class="t">float</span></div>
+            <div class="field"><span class="k">layer</span><span class="t">str?</span></div>
+            <div class="field"><span class="k">world_bbox</span><span class="t">x0,y0,x1,y1</span></div>
+          </div>
+          <div class="contract">
+            <div class="cname">DrawnElement</div>
+            <div class="field"><span class="k">kind</span><span class="t">cable_line …</span></div>
+            <div class="field"><span class="k">points_world</span><span class="t">[[x,y]…]</span></div>
+            <div class="field"><span class="k">length</span><span class="t">float</span></div>
+            <div class="field"><span class="k">note</span><span class="t">str</span></div>
+          </div>
+          <div class="contract">
+            <div class="cname">KnowledgeBase</div>
+            <div class="field"><span class="k">id</span><span class="t">"general" | "db"</span></div>
+            <div class="field"><span class="k">name</span><span class="t">str</span></div>
+            <div class="field"><span class="k">doc_count</span><span class="t">int</span></div>
+          </div>
+          <div class="contract">
+            <div class="cname">ChatRequest</div>
+            <div class="field"><span class="k">message</span><span class="t">str</span></div>
+            <div class="field"><span class="k">knowledge_bases</span><span class="t">str[]?</span></div>
+          </div>
+          <div class="contract" style="border-color:var(--amber); background:var(--amber-dim); opacity:.9;">
+            <div class="cname" style="color:var(--amber);">DwgEditOp <span style="color:var(--ink-faint); font-weight:400;">(planned: agent-authored)</span></div>
+            <div class="field"><span class="k">op</span><span class="t">add_geometry …</span></div>
+            <div class="field"><span class="k">citation</span><span class="t">clause ref</span></div>
+            <div class="field"><span class="k">confidence</span><span class="t">float</span></div>
+          </div>
+        </div>
+
+        <div class="stat-row reveal">
+          <div class="stat"><div class="num">4</div><div class="cap">interchangeable CAD engines behind one interface — ezdxf, LibreDWG, ACadSharp, QCAD</div></div>
+          <div class="stat"><div class="num">1</div><div class="cap">process today — gateway, pipeline and every agent run in the same FastAPI app</div></div>
+          <div class="stat"><div class="num">0</div><div class="cap">agent-to-agent messages — every "hop" today is one HTTP request, resolved in-process</div></div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════ PRINCIPLES ══════════════════════ -->
+      <section id="principles">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow amber">08 · Non-negotiables</div>
+            <h2>Whatever gets built next, these hold.</h2>
+          </div>
+        </div>
+        <div class="constitution reveal">
+          <div class="commandment"><span>Drafting, not deciding</span>Every agent output is a proposal. Final validation and legal liability stay with the certified engineer — always.</div>
+          <div class="commandment"><span>No claim without a citation</span>If a regulation-grounded answer can't point to the exact retrieved clause, it doesn't ship as an answer.</div>
+          <div class="commandment"><span>No silent writes</span>Nothing touches the source DWG/DXF without an explicit, reviewable, human-approved step.</div>
+          <div class="commandment"><span>Every correction is logged</span>An engineer's edit or rejection is training data, not a discarded event — it's how the system gets better.</div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════ ROADMAP ══════════════════════ -->
+      <section id="roadmap">
+        <div class="section-head reveal">
+          <div>
+            <div class="eyebrow">09 · From here</div>
+            <h2>What closes the gap between this document and the pitch deck.</h2>
+          </div>
+        </div>
+        <div class="table-wrap reveal">
+          <table class="roadmap">
+            <thead><tr><th>Priority</th><th>What</th><th>Closes</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="pill partial"><span class="pill-dot"></span>Next</span></td>
+                <td><div class="item">Formal Orchestrator</div><div class="desc">Replace the client-side regex router with a real coordinating agent that plans, sequences and retries.</div></td>
+                <td class="dim">§03 → §04</td>
+              </tr>
+              <tr>
+                <td><span class="pill partial"><span class="pill-dot"></span>Next</span></td>
+                <td><div class="item">A2A between existing agents</div><div class="desc">Give Compliance/Locator/Analyzer/Draftsman a peer-to-peer interface instead of being called as functions.</div></td>
+                <td class="dim">§04</td>
+              </tr>
+              <tr>
+                <td><span class="pill planned"><span class="pill-dot"></span>Planned</span></td>
+                <td><div class="item">CAD Manipulation Agent</div><div class="desc">The instruction → SOP retrieval → edit plan loop described in §07, on top of the CAD engine framework that already exists.</div></td>
+                <td class="dim">§07</td>
+              </tr>
+              <tr>
+                <td><span class="pill planned"><span class="pill-dot"></span>Planned</span></td>
+                <td><div class="item">Verification Agent</div><div class="desc">The clearance/norm re-check that has to exist before the CAD agent is trusted with a real write.</div></td>
+                <td class="dim">§02 · §07</td>
+              </tr>
+              <tr>
+                <td><span class="pill planned"><span class="pill-dot"></span>Planned</span></td>
+                <td><div class="item">Broaden the knowledge base</div><div class="desc">VDE corpus, more DB Richtlinien folders, and a real semantic index behind the Knowledge Steward.</div></td>
+                <td class="dim">§05</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="reveal">
+        <div class="word">GLEIS·OS — SYSTEM BLUEPRINT</div>
+        <div class="line">Every engineer correction becomes ground truth. This document is meant to be corrected too — treat it as v1.</div>
+      </footer>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  // Scroll-spy on the left rail. Uses getBoundingClientRect() (viewport-
+  // relative, recomputed fresh every call) rather than offsetTop, and a
+  // 0-based comparison so a section only "wins" once its top has actually
+  // crossed the trigger line - avoids every link lighting up on a stale
+  // pre-layout read on first paint.
+  const navLinks = Array.from(document.querySelectorAll('#railNav a'));
+  const targets = navLinks.map(a => document.querySelector(a.getAttribute('href')));
+  function onScroll(){
+    const triggerY = window.innerHeight * 0.3;
+    let active = 0;
+    targets.forEach((el, i) => {
+      if (el && el.getBoundingClientRect().top <= triggerY) active = i;
+    });
+    navLinks.forEach((a, i) => a.classList.toggle('active', i === active));
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('load', onScroll);
+  requestAnimationFrame(onScroll);
+
+  // Reveal-on-scroll
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+
