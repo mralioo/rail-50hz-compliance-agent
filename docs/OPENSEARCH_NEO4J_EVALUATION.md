@@ -313,6 +313,14 @@ chunker/graph schema rather than being folded into `app/kb/corpus.py`.
 
 ### 9.1 Extraction — Docling, CPU-only feasibility (measured on this machine)
 
+> **Superseded 2026-09-16** — extraction now runs on a remote Docling
+> *server* via a DDD/hexagonal slice (`app/domain/documents/`,
+> `app/adapters/documents/`, `app/application/documents/`), not the local
+> CPU tiered-pipeline this subsection describes. See
+> `docs/DOCUMENT_EXTRACTION.md` for the current design, full-run results
+> (185/185 files, 0 errors, 401 images), and known limitations. Kept below
+> as historical record of the CPU-feasibility numbers.
+
 `app/ingestion/docling_pipeline.py` (`make docling-extract`) walks
 `dataset/raw/<project>/` and writes folder-mirrored Markdown to
 `dataset/clean/<project>/`, tiered by *measured* text density rather than a
@@ -376,3 +384,259 @@ parallel, additive modules instead:
 - `scripts/project_kb_ingest_opensearch.py` / `_neo4j.py` — same shape as
   the existing `kb_ingest_*.py` scripts; `make kb-ingest-project` runs
   both (reuses the already-running `make kb-up` stack, unmodified).
+
+### 9.3 Third embedding provider — remote vLLM, no local model or API key (2026-09-17)
+
+Context: the org runs a separate `indexing_service` container on the same
+server as Docling, backing a live product (real projects/users — confirmed
+via its logs and source, `/workspace/src/indexing_service.py`). Explored
+using it directly to index this corpus, but its only HTTP surface is its own
+internal docker networks (no nginx route, unlike `/docling/`), and writing
+into its Postgres+OpenSearch would mean creating real records in a shared
+production-like system. **Decision: index locally instead** — added a third
+`OPENSEARCH_EMBEDDING_PROVIDER=vllm` option to `opensearch_store.embed()`
+that calls the same underlying embedding *model* the org's stack uses
+(`intfloat/multilingual-e5-large`, reachable at `VLLM_EMBEDDINGS_BASE_URL`,
+nginx-proxied at `/embeddings/` the same way `/docling/` is) but writes only
+to our own local `docker-compose.kb.yml` OpenSearch — no shared server state
+touched.
+
+**Two real gotchas hit and fixed:**
+1. **E5 query/passage prefix**: e5 models are trained with a `"query: "`/
+   `"passage: "` instruction prefix; `embed()` gained an `is_query: bool`
+   param so `ingest()` (passage) and `query()` (query) prefix correctly —
+   skipping this measurably hurts retrieval quality for e5 specifically (not
+   an issue for the `local`/`openai` providers, which don't use this
+   convention).
+2. **The server's 512-token limit is a *combined* per-request budget, not
+   per-item.** First attempt batched 32 chunks per HTTP call (matching the
+   Docling client's batching instinct) and got `400: "maximum context length
+   is 512 tokens... requested 815 tokens"` — for a batch of *short* items
+   that were each individually well under any reasonable limit. Fixed by
+   sending one item per request (`_embed_one_vllm`), plus a halving retry for
+   the rarer case where a single already-truncated (1500 char) item is still,
+   alone, over budget — dense German/English technical text tokenizes more
+   richly than the conservative chars-per-token estimate assumed. 13/319
+   chunks needed one halving retry (down to 462–754 chars) on the real run.
+
+**Real run** (project_1, full corpus, `make kb-ingest-project` equivalent):
+319 chunks (from `app/kb/project_corpus.py`'s heading-based split over the
+185-document extraction — see caveat below), all indexed successfully, **27s
+total** (dominated by 319 sequential embed round-trips, not OpenSearch
+itself). Query probes (`Erdungsanlage`, `Stromberdarfberechnung`,
+`Netzersatzanlage Dieselgenerator`, `ESTW-A Dörstewitz Übersichtsschema`) all
+returned topically-relevant top hits (scores 0.90–0.93).
+
+**Caveat carried over from §9.1's chunker**: `project_corpus.py` splits only
+on real Markdown headings; 11 of the 185 documents produced a single
+"preamble" chunk spanning their *entire* body (up to 242,329 chars) because
+Docling didn't emit heading markup for them (large text-heavy reports where
+structure is numbered-bold-paragraph, not ATX headings) — the char-truncation
+above makes these embeddable without crashing the run, but the resulting
+vector only represents the first ~1500 chars of an up-to-61-page document,
+not the whole thing. Not fixed — `project_corpus.py`'s chunker predates this
+session; a real fix would cap chunk size independent of heading detection
+(e.g. a secondary length-based split within the preamble), same class of fix
+`app.adapters.documents.docling_conversion_adapter`'s Docling-side chunker
+already gets for free via `chunking_max_tokens`.
+
+### 9.4 Visualization — Apple's Embedding Atlas (2026-09-17)
+
+Added as a repo tool for browsing the local vector index visually — this
+corpus is image-heavy and text-sparse (§9.1's caveat), so the *text* alone in
+a chunk is often not enough to judge whether a cluster makes sense; seeing
+the actual schematic is.
+
+- `backend/scripts/project_kb_export_atlas.py` — exports `rail50hz_project_docs`
+  to a Parquet file with the exact stored vectors (not re-embedded) plus, per
+  chunk, its document's first extracted image (base64 PNG, from
+  `dataset/clean/<project>/.../images/`, resolved via the same convention
+  `app.application.documents.local_keys.image_key` writes) and an
+  `image_count` column.
+- `make visualize-embeddings PROJECT=project_1` runs the export, then
+  `embedding-atlas <parquet> --text text --vector embedding --image image` —
+  computes a 2D UMAP layout **from the real stored vectors** (`--vector` wins
+  over `--text`/`--image` for the projection — verified directly against
+  `embedding_atlas/cli.py`'s modality-selection order, so specifying `--image`
+  only affects the tooltip/instances-view renderer, it does not pull in a
+  separate image-embedding model or alter the layout) and serves an
+  interactive local viewer (WebGPU-based scatter plot, search, clustering) —
+  prints its URL (default `http://localhost:5055/`).
+- Dependency footprint: `embedding-atlas` pulls its own full
+  sentence-transformers/torch/umap-learn stack (~2GB+) even though `--vector`
+  means none of it is actually used for embedding here — by far the heaviest
+  optional dependency in `requirements.txt`. Only needed for
+  `make visualize-embeddings`, not the running backend.
+- **Real export** (project_1): 319 chunks, 270 with a cover image (49 null,
+  exactly matching the 49 chunks belonging to zero-image documents — verified
+  by grouping `image_count` against image-column nullness). Verified a
+  sample decodes to a valid PNG (magic bytes `\x89PNG\r\n\x1a\n`).
+- One gotcha ported into the export script: pandas/pyarrow round-trips a
+  Python `None` in a string column through Parquet as a float-NaN-like
+  sentinel on read-back — `is not None` silently miscounts nulls as present;
+  use `.isna()`/`.notna()` instead. Caught while sanity-checking the export
+  (an initial run misreported "319/319 have a cover image").
+
+### 9.5 Re-indexing from the refinement layer + a 3-tier storage strategy
+
+The refinement layer (`dataset/clean` → `dataset/super_clean`: LLM text
+cleanup + per-image description/categorization, `make docling-refine` — see
+`docs/DOCUMENT_EXTRACTION.md`) produces the *same* frontmatter-plus-Markdown
+contract §9.2's chunker already reads, just cleaner and richer.
+`app.kb.project_corpus.iter_chunks()` was already parametrized by a generic
+base directory (not hardcoded to `dataset/clean`), so pointing at the refined
+corpus needed no *chunking* changes — but "make sure the images can still be
+reopened in Atlas" did need a real design decision, not just a path swap.
+
+**The three tiers, one owner each:**
+
+| Tier | What | Owns |
+| :--- | :--- | :--- |
+| **Artifact store** | `dataset/clean/<project>/<doc>/{raw/,images/}` | Original files + extracted image PNGs. Written once by extraction, never duplicated into `super_clean` (refinement only rewrites text) — the *only* copy of any binary. |
+| **Vector/metadata store** | OpenSearch `rail50hz_project_docs` | Chunk text + embedding + **the images that specific chunk references** (resolved absolute path + category + description) — source of truth for "what does this chunk mean and what does it show." |
+| **Visualization cache** | `backend/workdir/atlas/<project>.parquet` | Fully derived, disposable — regenerated from the tier above by `project_kb_export_atlas.py` on every run. Never a source of truth; safe to delete anytime. |
+
+The concrete change enabling this: **image references are resolved once, at
+chunking time, to the specific chunk that names them** — not guessed later
+from "the document's first image on disk." `app.kb.project_corpus._extract_images`
+scans each chunk's own Markdown text for `| ... | [file](link) | col_a | col_b |`
+table rows (handles both the extraction layer's `type`/`caption` columns and
+the refinement layer's `category`/`description` columns positionally, so it
+doesn't need to know which corpus produced the chunk), resolves `link`
+against *that chunk's own* `.md` file location (images live under
+`dataset/clean/`, but `super_clean/.../*.md` files point back at them with a
+different relative path — resolving at read time made that a non-issue), and
+stores the result as `ProjectChunk.images: list[ImageRef]`.
+`project_opensearch_store.ingest()` writes this straight onto each chunk's
+OpenSearch document (`images: [{file, path, category, description}]`, plain
+`object` mapping — not `nested`, since nothing here needs a same-sub-object
+query). The Atlas export became a pure read: no filesystem globbing, just
+`hit["_source"]["images"][0]["path"]` → read bytes → base64. A chunk that
+doesn't reference any image (most of them — only the "Extracted images"
+section chunk per document actually does) correctly gets no thumbnail,
+instead of the old doc-level logic that attached the same "first image of
+the whole document" to *every* chunk regardless of relevance.
+
+Also added: `app.kb.project_opensearch_store.clear_project(project)` —
+delete-by-query on the `project` field before a re-ingest. Necessary because
+`chunk_id` is positional (`f"{project}:{doc_name}#{index}"`): if the refined
+version of a document has a different heading structure than the raw
+extraction, a naive re-ingest would leave old, higher-indexed chunks from the
+previous source sitting in the index forever. `ingest()` clears by default.
+
+**Tools**: `scripts/project_kb_ingest_opensearch.py --source clean|super_clean`
+(default `clean`); `make reindex-refined PROJECT=project_1` chains
+`kb-ingest-project SOURCE=super_clean` → `visualize-embeddings` (which now
+also `pkill -f`s any previously-running viewer for the same parquet path
+before relaunching — see §9.4's gotcha note).
+
+**Real run** (project_1, full refined corpus, 2026-09-17): 319 chunks
+re-embedded from `dataset/super_clean/` (184/184 documents refined, 0
+errors, per the refinement layer's own manifest), old `clean`-sourced chunks
+cleared first (verified index count dropped to exactly 319, not 319+319).
+**135/319 chunks carry at least one image** (down from a misleading "270/319
+documents" doc-level count in §9.4 — this is the correct, chunk-scoped
+number: only chunks that *are* an "Extracted images" section have any).
+Spot-checked in OpenSearch directly: image path resolves and exists on disk,
+category/description populated from the refinement layer's LLM output (e.g.
+`floor_plan` / "A floor plan showing the layout of a 'Rechnerraum'..." —
+richer than the extraction layer's bare Docling classification).
+
+Coordinated with a parallel session doing the refinement-layer build itself
+(same repo, same day) via cross-session messaging rather than guessing at
+file ownership — see `docs/DOCUMENT_EXTRACTION.md` for that layer's own
+design notes and real-corpus findings (e.g. zero documents in this corpus
+have an inline image anchor — every description lands in the reference
+table, none inline in the body).
+
+### 9.6 A dedicated Images panel + full-size viewing
+
+Reported issue: images wouldn't open/display at full size in the Atlas
+viewer. Two changes in `project_kb_export_atlas.py`:
+
+1. **Explicit Data URL.** The `image` column previously stored a bare
+   base64 string; switched to `data:image/png;base64,...`. Both are
+   documented-supported formats, but the explicit form removes any
+   auto-detection ambiguity in the renderer — the safer of the two when a
+   viewer's actual behavior can't be visually confirmed in this environment
+   (no browser/playwright available in-session).
+2. **A second table, not just a tooltip column.** Read straight from
+   `embedding_atlas/cli.py --help` (not guessed): there is no "add panel"
+   flag — `--table NAME PATH` loads an *additional* table into the
+   dashboard, and `--table-relation NAME 'mainKey=<expr>;key=<col>'` joins it
+   to the main table for cross-filtering. Exported a **second Parquet**,
+   `<project>_images.parquet` — one row per **unique image** (deduplicated
+   by resolved path, not by chunk: a chunk referencing 65 images produces 65
+   rows here, vs. exactly 1 "first image" thumbnail on the main table),
+   full-resolution Data URL + real width/height (via Pillow) +
+   category/description, with a `chunk_id` back-reference. Loaded via:
+   ```
+   --table images <project>_images.parquet \
+   --table-relation images 'mainKey=chunk_id;key=chunk_id'
+   ```
+   This is what gives a genuine, dedicated "Images" tab/panel in the
+   dashboard rather than only a small per-chunk tooltip thumbnail.
+
+**Real numbers** (project_1): 401 unique images across all chunks (matches
+the extraction layer's own total image count exactly), all with valid
+`data:image/png;base64,` prefixes, zero missing width/height. Verified
+server-side: correct PNG magic bytes after base64 decode, real file sizes,
+`--table-relation` accepted by the CLI without error, viewer serves HTTP 200
+with both tables loaded.
+
+**Honest limit**: could not visually confirm the actual click-to-full-size
+interaction in a browser — no headless browser tooling was available in this
+environment to check. The data feeding the renderer is now verified correct;
+whether the UI's own image-enlarge affordance behaves as expected is for the
+user to confirm.
+
+**Unrelated environment landmine hit while relaunching the viewer**:
+`pkill -f "embedding-atlas..."` crashed the sandboxed shell itself (reproducible,
+even with `|| true`) — almost certainly matching the sandbox wrapper's own
+invocation text, not the target process. Fixed by killing by **port** instead
+(`fuser -k 5055/tcp`), which `make visualize-embeddings` now uses. `disown`
+after `&` in this non-interactive shell also misbehaved (no job control) and
+was dropped — `setsid nohup CMD < /dev/null > log 2>&1 &` is already fully
+detached without it.
+
+### 9.7 Graph store, brought up to date with the same refined corpus
+
+`project_neo4j_store.py` got the same treatment as the OpenSearch store in
+§9.5: `ingest(source_dir, project)` (renamed from `clean_dir`, still generic)
+plus `clear_project(project)` — detach-deletes every `Document`+`Section` for
+that project before a re-ingest, same reasoning as the OpenSearch version
+(`Section.id` is positional; a different heading structure from the refined
+corpus could otherwise leave orphaned Section nodes). `Project`/`Substation`
+nodes are left alone (stable, name-keyed). `scripts/project_kb_ingest_neo4j.py`
+gained the matching `--source clean|super_clean` flag; `make kb-ingest-project`
+now passes `--source $(SOURCE)` to both stores, not just OpenSearch.
+
+Also fixed along the way: `NEO4J_PASSWORD` left blank in `backend/.env`
+looked safe per its own comment ("defaults to rail50hz-dev if left blank in
+both places") but that default only exists on the *docker-compose* side
+(`${NEO4J_PASSWORD:-rail50hz-dev}`) — `app.core.config.Settings.neo4j_password`
+has no such default (`None`), so `neo4j_store.get_driver()` would silently
+build `auth=(neo4j, None)` and fail. Set explicitly now in both `.env` and
+`.env.example`, comment corrected.
+
+**Real run** (project_1, full refined corpus, `make kb-up` extended to start
+`neo4j` alongside `opensearch`): 319 chunks ingested, verified via direct
+Cypher count — 1 `Project`, 10 `Substation`, 184 `Document`, 319 `Section`,
+513 relationships (10 `PART_OF` + 184 `BELONGS_TO` + 319 `HAS_SECTION`) —
+exact match to the corpus (184/184 documents, 319 total chunks). `find_sections`
+fulltext probe returns real hits.
+
+**Neo4j Browser** (the graph UI) ships inside the `neo4j` container itself —
+no separate process to launch, just start the container and it's reachable
+at `http://localhost:7474/` (confirmed HTTP 200). Connect with
+`bolt://localhost:7687`, user `neo4j`, password from `NEO4J_PASSWORD`
+(`rail50hz-dev` by default). A good first query to see the whole graph:
+```cypher
+MATCH (p:Project)<-[:PART_OF]-(s:Substation)<-[:BELONGS_TO]-(d:Document)-[:HAS_SECTION]->(sec:Section)
+RETURN p, s, d, sec LIMIT 500
+```
+or, for just the taxonomy without the (much larger) Section layer:
+```cypher
+MATCH (p:Project)<-[:PART_OF]-(s:Substation)<-[:BELONGS_TO]-(d:Document)
+RETURN p, s, d
+```

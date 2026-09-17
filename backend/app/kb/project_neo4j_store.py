@@ -1,4 +1,6 @@
-"""Neo4j-backed graph over the project-document corpus - turns the folder
+"""Neo4j-backed graph over the project-document corpus (dataset/clean/ or
+dataset/super_clean/<project>/ - see app.kb.project_corpus, whose
+iter_chunks() is agnostic to which one it's pointed at) - turns the folder
 taxonomy the client already uses (substation x document category) into real
 one-hop graph queries, e.g. "every Erdungsanlage section for ESTW-A
 Dörstewitz", the way app.kb.neo4j_store's code_status() does for regulation
@@ -39,10 +41,40 @@ def _ensure_fulltext_index(session) -> None:
     )
 
 
-def ingest(clean_dir: Path, project: str) -> int:
-    chunks = iter_chunks(clean_dir, project)
+def clear_project(project: str) -> int:
+    """Detach-delete every Document+Section for *project* before a re-ingest
+    from a different source corpus (e.g. dataset/super_clean/ after
+    dataset/clean/) - mirrors app.kb.project_opensearch_store.clear_project.
+    Section.id is positional (chunk_id = f"{project}:{doc_name}#{index}"), so
+    a document whose refined heading structure produces fewer sections than
+    before would otherwise leave old, higher-indexed Section nodes orphaned
+    in the graph forever. Project/Substation nodes are left alone - they're
+    stable, name-keyed, and get re-MERGEd identically either way."""
+    with get_driver() as driver, driver.session() as session:
+        result = session.run(
+            "MATCH (p:Project {id:$project})<-[:PART_OF]-(:Substation)"
+            "<-[:BELONGS_TO]-(d:Document) "
+            "OPTIONAL MATCH (d)-[:HAS_SECTION]->(sec:Section) "
+            "WITH d, collect(sec) AS sections "
+            "FOREACH (s IN sections | DETACH DELETE s) "
+            "DETACH DELETE d "
+            "RETURN count(d) AS deleted_docs",
+            project=project,
+        )
+        record = result.single()
+        return record["deleted_docs"] if record else 0
+
+
+def ingest(source_dir: Path, project: str, *, clear_existing: bool = True) -> int:
+    """Chunk + write every document under source_dir/project/ into the graph
+    (either dataset/clean/ or dataset/super_clean/ - iter_chunks doesn't
+    care which)."""
+    chunks = iter_chunks(source_dir, project)
     if not chunks:
         return 0
+
+    if clear_existing:
+        clear_project(project)
 
     with get_driver() as driver, driver.session() as session:
         _ensure_fulltext_index(session)

@@ -1,22 +1,16 @@
-"""Low-level HTTP client for the Docling document-conversion service.
+"""Docling HTTP Client - Adapter layer.
 
-Ported from the ITUKI backend (infrastructure/clients/docling_client.py) so
-this project's dataset extraction uses the *same* server API and the *same*
-call/polling mechanism instead of running Docling's ML pipeline locally on
-CPU (~15-22s/page, and no image extraction).
+Handles low-level HTTP communication with the Docling document-conversion
+service (self-hosted, see reference_codebase/c3_pipeline_document_ingestion.svg).
+Ported from the reference architecture's DoclingClient; ``base_url`` and
+tuning knobs default from this project's Settings instead of raw env vars.
 
-The service runs at ``DOCLING_BASE_URL`` (default ``http://10.0.1.236/docling``)
-and exposes an async job API:
+The service exposes an async job API:
 
-    POST /v1/chunk/hybrid/file/async   -> {"task_id": ...}
+    POST /v1/chunk/hybrid/file/async   -> {"task_id": ...}   (text + images)
+    POST /v1/convert/file/async        -> {"task_id": ...}   (text only, lighter)
     GET  /v1/status/poll/{task_id}     -> {"task_status": "success"|...}
     GET  /v1/result/{task_id}          -> {chunks, documents:[{content:{...}}]}
-
-``chunk_file_with_images`` submits a single job with image export enabled and
-returns three things from one call: the hybrid-chunked text, the full
-Markdown, and the converted-document JSON (whose page renders the pipeline
-crops individual pictures out of - Docling does not embed per-picture bytes
-even with ``image_export_mode=embedded``).
 """
 import asyncio
 import time
@@ -24,6 +18,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+
+from app.core.config import get_settings
 
 
 @dataclass
@@ -43,41 +39,34 @@ class ChunkResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
-class ConversionResult:
-    """Everything one ``chunk_file_with_images`` call yields."""
-
-    chunks: list[ChunkResult]
-    markdown: str
-    document: dict  # raw Docling document JSON (pages + pictures live here)
-
-
 class DoclingClient:
     """Async HTTP client for the Docling conversion service.
 
     Submits documents via multipart/form-data to the async job API and polls
-    for completion, matching the ITUKI backend's proven call sequence.
+    for completion, matching the reference architecture's call sequence.
     """
 
     def __init__(
         self,
-        base_url: str = "http://10.0.1.236/docling",
+        base_url: str | None = None,
         *,
         timeout: float = 1800.0,  # 30 min read - AEC schematics render slowly
         poll_interval: float = 5.0,
         max_poll_attempts: int = 720,  # 720 * 5s = 60 min max wait
-        embedding_model: str = "intfloat/multilingual-e5-large",
+        embedding_model: str | None = None,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
+        settings = get_settings()
+        self.base_url = (base_url or settings.docling_base_url).rstrip("/")
         self.timeout = timeout
         self.poll_interval = poll_interval
         self.max_poll_attempts = max_poll_attempts
-        self.embedding_model = embedding_model
+        self.embedding_model = embedding_model or settings.embedding_model
 
         self.health_url = f"{self.base_url}/health"
         self.status_poll_url = f"{self.base_url}/v1/status/poll"
         self.result_url = f"{self.base_url}/v1/result"
         self.chunk_hybrid_file_async_url = f"{self.base_url}/v1/chunk/hybrid/file/async"
+        self.convert_file_async_url = f"{self.base_url}/v1/convert/file/async"
 
     def _timeout_config(self) -> httpx.Timeout:
         return httpx.Timeout(
@@ -92,6 +81,48 @@ class DoclingClient:
         except httpx.HTTPError:
             return False
 
+    # ------------------------------------------------------------------
+    # Lightweight text-only extraction (DocumentTextExtractionPort)
+    # ------------------------------------------------------------------
+
+    async def extract_text_from_file(self, file_bytes: bytes, filename: str) -> str:
+        """Convert a document to markdown via the lightweight convert endpoint —
+        no chunking, no image extraction. Use for callers that only need plain
+        text, to avoid the heavier hybrid-chunker overhead.
+        """
+        if not filename:
+            raise ValueError("filename is required for extract_text_from_file")
+
+        async with httpx.AsyncClient(timeout=self._timeout_config()) as client:
+            task_id = await self._submit_convert_file(client, filename, file_bytes)
+            await self._wait_for_completion(client, task_id)
+            return await self._get_text_result(client, task_id)
+
+    async def _submit_convert_file(
+        self, client: httpx.AsyncClient, filename: str, file_bytes: bytes
+    ) -> str:
+        files = {"files": (filename, file_bytes, "application/octet-stream")}
+        data = {
+            "convert_do_ocr": "true",
+            "convert_force_ocr": "false",
+            "convert_ocr_engine": "easyocr",
+            "convert_pdf_backend": "dlparse_v4",
+            "convert_table_mode": "fast",
+            "convert_do_table_structure": "true",
+            "convert_document_timeout": str(self.timeout),
+            "convert_abort_on_error": "false",
+        }
+        return await self._submit(client, self.convert_file_async_url, files, data)
+
+    async def _get_text_result(self, client: httpx.AsyncClient, task_id: str) -> str:
+        data = await self._fetch_result_json(client, task_id)
+        markdown, _ = self._parse_document(data)
+        return markdown
+
+    # ------------------------------------------------------------------
+    # Chunk + image extraction (DocumentConversionClientPort)
+    # ------------------------------------------------------------------
+
     async def chunk_file_with_images(
         self,
         file_bytes: bytes,
@@ -100,22 +131,26 @@ class DoclingClient:
         max_tokens: int = 512,
         force_ocr: bool = False,
         ocr_lang: list[str] | None = None,
-        images_scale: float = 2.0,
+        images_scale: float | None = None,
         classify_pictures: bool = True,
         describe_pictures: bool = False,
         picture_description_prompt: str | None = None,
         merge_peers: bool = True,
-    ) -> ConversionResult:
+    ) -> tuple[list[ChunkResult], dict]:
         """Chunk a document and extract embedded images in a single API call.
 
-        Returns text chunks, the full Markdown, and the converted-document
-        JSON (page renders + picture provenance the pipeline crops from).
+        Returns (chunks, document_json). ``document_json`` carries the full-page
+        renders and picture provenance the conversion adapter crops images from.
         """
         if not filename:
             raise ValueError("filename is required for chunk_file_with_images")
 
+        settings = get_settings()
+        if images_scale is None:
+            images_scale = settings.docling_images_scale
+
         async with httpx.AsyncClient(timeout=self._timeout_config()) as client:
-            task_id = await self._submit(
+            task_id = await self._submit_chunk_file_with_images(
                 client,
                 filename=filename,
                 file_bytes=file_bytes,
@@ -129,9 +164,9 @@ class DoclingClient:
                 merge_peers=merge_peers,
             )
             await self._wait_for_completion(client, task_id)
-            return await self._get_result(client, task_id)
+            return await self._get_chunk_result_with_document(client, task_id)
 
-    async def _submit(
+    async def _submit_chunk_file_with_images(
         self,
         client: httpx.AsyncClient,
         *,
@@ -179,10 +214,29 @@ class DoclingClient:
         if describe_pictures and picture_description_prompt:
             data["convert_picture_description_custom_config"] = picture_description_prompt
 
+        return await self._submit(client, self.chunk_hybrid_file_async_url, files, data)
+
+    async def _get_chunk_result_with_document(
+        self, client: httpx.AsyncClient, task_id: str
+    ) -> tuple[list[ChunkResult], dict]:
+        data = await self._fetch_result_json(client, task_id)
+        chunks = self._parse_chunks(data)
+        _, document = self._parse_document(data)
+        return chunks, document
+
+    # ------------------------------------------------------------------
+    # Shared submit / poll / fetch / parse
+    # ------------------------------------------------------------------
+
+    async def _submit(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        files: dict,
+        data: dict,
+    ) -> str:
         try:
-            response = await client.post(
-                self.chunk_hybrid_file_async_url, files=files, data=data
-            )
+            response = await client.post(url, files=files, data=data)
             response.raise_for_status()
             result = response.json()
             task_id = result.get("task_id")
@@ -233,19 +287,15 @@ class DoclingClient:
 
         raise RuntimeError(f"Task {task_id} timed out waiting for completion")
 
-    async def _get_result(
+    async def _fetch_result_json(
         self, client: httpx.AsyncClient, task_id: str
-    ) -> ConversionResult:
+    ) -> dict:
         response = await client.get(f"{self.result_url}/{task_id}")
         response.raise_for_status()
         data = response.json()
-
         if data.get("status") == "failure":
             raise RuntimeError(f"Docling conversion failed: {data.get('errors', [])}")
-
-        chunks = self._parse_chunks(data)
-        markdown, document = self._parse_document(data)
-        return ConversionResult(chunks=chunks, markdown=markdown, document=document)
+        return data
 
     @staticmethod
     def _parse_chunks(data: dict) -> list[ChunkResult]:

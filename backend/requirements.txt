@@ -28,8 +28,20 @@ neo4j>=5.24
 sentence-transformers>=3.0   # local embeddings (default); OpenAI is the opt-in alternative, already a dep
 
 # --- Project-document extraction (dataset/raw/ -> clean Markdown + images, see
-# app/ingestion/docling_pipeline.py). Extraction now runs on the remote Docling
+# app/application/documents/). Extraction now runs on the remote Docling
 # *server* (DOCLING_BASE_URL) via its async HTTP API, so no local ML pipeline /
 # torch is needed here - only an HTTP client (httpx, above) and Pillow to crop
 # individual pictures out of the server's full-page renders. ---
 Pillow>=10.0
+
+# --- Embedding visualization (scripts/project_kb_export_atlas.py + Apple's
+# Embedding Atlas, https://github.com/apple/embedding-atlas). Exports the
+# already-indexed vectors from the local OpenSearch KB eval stack (§9.3,
+# OPENSEARCH_NEO4J_EVALUATION.md) to Parquet, then `embedding-atlas` computes
+# a UMAP 2D projection + launches an interactive local viewer. Heaviest
+# optional dependency in this file (pulls its own sentence-transformers/torch
+# stack even though we pass --vector to skip re-embedding - only used for
+# `make visualize-embeddings`, not the running backend). ---
+pandas>=2.2
+pyarrow>=16.0
+embedding-atlas>=0.9

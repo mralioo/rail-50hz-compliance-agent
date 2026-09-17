@@ -31,6 +31,14 @@ Each slice follows the pattern proven in row 1 (`cad`):
 | 8 | viewer | `app/viewer/` | `app/domain/viewer/`, `app/adapters/viewer/` | pending |
 | 9 | jobs | `app/pipeline/` | `app/pipelines/document_processing/`, `app/adapters/jobs/` (in-memory `JobRepositoryPort`), `app/application/services/` | pending |
 | 10 | api | `app/api/routes.py`, `app/main.py` | `app/api/routes/<context>.py`, `app/api/main.py`, `app/api/deps.py` | pending — do last, once every context routes.py imports has moved |
+| 11 | documents (extraction) | *(new — no old module; ported from `reference_codebase/`, the ITUKI backend's design)* | `app/domain/documents/`, `app/adapters/documents/`, `app/pipelines/` (generic engine), `app/application/documents/`, `app/application/shared_steps/` | **done** |
+
+Row 11 is not a migration of existing code — see `docs/DOCUMENT_EXTRACTION.md` for the
+full design, and the note below on why the generic pipeline *engine* (row 11) landed at
+`app/pipelines/` directly rather than waiting for row 9 (`jobs`), which is about migrating
+the old compliance-analysis orchestrator (`app/pipeline/`, singular) to a *per-context*
+pipeline under the same `app/pipelines/` root — both rows share one engine, they don't
+conflict.
 
 ## Decision log
 
@@ -49,6 +57,27 @@ Each slice follows the pattern proven in row 1 (`cad`):
   and fixed in isolation instead of compounding with the rest.
 - **Scope**: backend only. UI (`webapp/`, `frontend/`) untouched; wire format
   (`app/models/schemas.py`, all `/api/v1/...` paths) unchanged throughout.
+- **Row 11 naming reconciliation (2026-08-21)**: the `documents` slice was first built
+  copying `reference_codebase/`'s exact ITUKI folder names (`app/infrastructure/...`,
+  `app/domain/pipeline/...`). That directly contradicts this file's own decision above
+  (`adapters/` over ITUKI's `infrastructure/`) and MIGRATION_MAP row 2's already-stated
+  target (`app/adapters/ingestion/`). Reconciled by renaming to this repo's convention:
+  `app/infrastructure/*` → `app/adapters/documents/*` (flattened to one file per tech,
+  matching `app/adapters/cad/`); `app/domain/data/documents/{models,ports}/*` →
+  `app/domain/documents/{models.py,ports.py}` (flattened to one file per concern,
+  matching `app/domain/cad/ports.py` — dropped the extra ITUKI `data/` nesting level,
+  since no other context here groups contexts under a `data/` parent); `app/domain/
+  pipeline/*` → `app/pipelines/*` (top-level, matching `docs/system_design/System
+  Design.pdf`'s explicit `/pipelines/*` path and `reference_codebase/backend/pipelines/`
+  itself, which is *also* top-level, not nested under `domain/` — so this specific ITUKI
+  path was actually consistent with this repo's design all along; the first pass got it
+  wrong by nesting it, not by copying ITUKI). IoC wiring added to `app/bootstrap.py`
+  (`get_document_conversion_client`, `get_document_text_extraction_client`,
+  `get_document_file_storage`), matching the `cad` slice's composition-root pattern.
+  Going forward: `reference_codebase/` is a useful reference for *behavior* (what a
+  slice should do, e.g. the Docling adapter's crop math) but its folder *names* are not
+  authoritative for this repo — always translate `infrastructure/` → `adapters/` and
+  keep bounded-context folders one level deep, per the decision above.
 
 ## Slice 1 notes (cad) — done
 

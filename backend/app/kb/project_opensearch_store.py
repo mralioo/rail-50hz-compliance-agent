@@ -1,7 +1,8 @@
 """OpenSearch-backed semantic (vector) retrieval over the project-document
-corpus (dataset/clean/<project>/, see app.kb.project_corpus) - parallel to
-app.kb.opensearch_store (regulations), reusing its connection/embedding
-primitives rather than duplicating them. Separate index
+corpus (dataset/clean/<project>/ or dataset/super_clean/<project>/ - see
+app.kb.project_corpus, whose iter_chunks() is agnostic to which one it's
+pointed at) - parallel to app.kb.opensearch_store (regulations), reusing its
+connection/embedding primitives rather than duplicating them. Separate index
 (`rail50hz_project_docs`) so this never collides with the regulation index.
 
 Evaluation-harness backend, same status as opensearch_store.py - not wired
@@ -19,6 +20,14 @@ PROJECT_INDEX = "rail50hz_project_docs"
 
 
 @dataclass
+class ImageHit:
+    file: str
+    path: str
+    category: str
+    description: str
+
+
+@dataclass
 class ProjectHit:
     doc_name: str
     heading: str
@@ -28,6 +37,7 @@ class ProjectHit:
     substation: str
     category: str
     source_path: str
+    images: list[ImageHit]
 
 
 def ensure_index(dims: int | None = None) -> None:
@@ -57,17 +67,55 @@ def ensure_index(dims: int | None = None) -> None:
                             "engine": "nmslib",
                         },
                     },
+                    # Object (not nested): we only ever store/retrieve these
+                    # whole, never query "category X AND description Y within
+                    # the same sub-object" - object's flattened indexing is
+                    # fine and avoids nested-query overhead. Resolved once at
+                    # chunking time (app.kb.project_corpus._extract_images),
+                    # so this *is* the artifact/vector-store tie-together -
+                    # see docs/OPENSEARCH_NEO4J_EVALUATION.md §9.5.
+                    "images": {
+                        "type": "object",
+                        "properties": {
+                            "file": {"type": "keyword"},
+                            "path": {"type": "keyword"},
+                            "category": {"type": "keyword"},
+                            "description": {"type": "text"},
+                        },
+                    },
                 }
             },
         },
     )
 
 
-def ingest(clean_dir: Path, project: str) -> int:
-    chunks: list[ProjectChunk] = iter_chunks(clean_dir, project)
+def clear_project(project: str) -> int:
+    """Delete every indexed chunk for *project*, so a re-ingest from a
+    different source corpus (e.g. dataset/super_clean/ after dataset/clean/)
+    can't leave stale orphan chunks behind — chunk_id is
+    f"{project}:{doc_name}#{index}", so a doc whose refined heading structure
+    produces *fewer* sections than before would otherwise leave its old
+    higher-indexed chunks sitting in the index forever."""
+    client = get_client()
+    if not client.indices.exists(index=PROJECT_INDEX):
+        return 0
+    resp = client.delete_by_query(
+        index=PROJECT_INDEX,
+        body={"query": {"term": {"project": project}}},
+        refresh=True,
+    )
+    return resp.get("deleted", 0)
+
+
+def ingest(source_dir: Path, project: str, *, clear_existing: bool = True) -> int:
+    """Chunk + embed + index every document under source_dir/project/ (either
+    dataset/clean/ or dataset/super_clean/ - iter_chunks doesn't care which)."""
+    chunks: list[ProjectChunk] = iter_chunks(source_dir, project)
     if not chunks:
         return 0
     ensure_index()
+    if clear_existing:
+        clear_project(project)
     vectors = embed([c.text for c in chunks])
     actions = [
         {
@@ -82,6 +130,10 @@ def ingest(clean_dir: Path, project: str) -> int:
                 "heading": c.heading,
                 "text": c.text,
                 "embedding": vec,
+                "images": [
+                    {"file": img.file, "path": img.path, "category": img.category, "description": img.description}
+                    for img in c.images
+                ],
             },
         }
         for c, vec in zip(chunks, vectors)
@@ -97,7 +149,7 @@ def query(
     substation: str | None = None,
     category: str | None = None,
 ) -> list[ProjectHit]:
-    vector = embed([text])[0]
+    vector = embed([text], is_query=True)[0]
     knn_clause = {"knn": {"embedding": {"vector": vector, "k": k}}}
     filters = []
     if substation:
@@ -118,6 +170,15 @@ def query(
             substation=hit["_source"]["substation"],
             category=hit["_source"]["category"],
             source_path=hit["_source"]["source_path"],
+            images=[
+                ImageHit(
+                    file=img.get("file", ""),
+                    path=img.get("path", ""),
+                    category=img.get("category", ""),
+                    description=img.get("description", ""),
+                )
+                for img in hit["_source"].get("images") or []
+            ],
         )
         for hit in resp["hits"]["hits"]
     ]

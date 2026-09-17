@@ -1,19 +1,52 @@
-"""Chunking for the project-document corpus (dataset/clean/<project>/,
-produced by app.ingestion.docling_pipeline) - parallel to app.kb.corpus,
-which is regulation-specific (H2-only split, active_codes/supersession
-regex tuned to that corpus's markdown convention and not applicable here).
+"""Chunking for the project-document corpus (dataset/clean/<project>/ or
+dataset/super_clean/<project>/, see app.application.documents.
+dataset_ingestion_service / dataset_refinement_service) - parallel to
+app.kb.corpus, which is regulation-specific (H2-only split, active_codes/
+supersession regex tuned to that corpus's markdown convention and not
+applicable here).
 
 Project documents get real Markdown heading structure from the Docling
 server (plus an "Extracted images" reference section) - so chunking here
 splits on any heading level (`^#+ `), not just H2.
+
+Storage strategy this module is the read side of (see
+docs/OPENSEARCH_NEO4J_EVALUATION.md §9.5 for the full writeup): each chunk's
+own image references (path + category/description, if its section is or
+contains an "Extracted images" table) are resolved to a real filesystem path
+*here*, once, at chunking time - not re-derived later from doc-level
+filesystem globbing. This makes app.kb.project_opensearch_store's index the
+single source of truth for "this chunk's text + vector + the images that
+actually belong to it", so app.application.documents (the artifact store,
+untouched by this module) and OpenSearch (the searchable/embeddable store)
+each own exactly one job, and a downstream consumer (e.g. the Embedding Atlas
+export) never needs to know which source corpus (clean/super_clean) or which
+frontmatter table shape (clean's `type`/`caption` columns vs. super_clean's
+`category`/`description` columns) a chunk came from.
 """
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
-_YAML_LINE_RE = re.compile(r'^(\w+):\s*(?:"((?:[^"\\]|\\.)*)"|(\S+))\s*$')
+from app.application.documents.markdown_artifact import parse_frontmatter
+
 _HEADING_RE = re.compile(r"^(#+)\s+(.*)$", re.MULTILINE)
+_TABLE_ROW_RE = re.compile(r"^\|(.+)\|\s*$", re.MULTILINE)
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff")
+
+
+@dataclass
+class ImageRef:
+    """One image belonging to a specific chunk, resolved to a real path on
+    disk (images physically live under dataset/clean/.../images/ - never
+    duplicated into dataset/super_clean/, see app.application.documents.
+    local_keys - so this resolution has to happen relative to whichever .md
+    file the link was actually written in)."""
+
+    file: str  # filename only, e.g. "000_p001_a700b2a3.png"
+    path: str  # absolute filesystem path, resolved from the chunk's own .md location
+    category: str = ""  # Docling's coarse classification, or the refinement layer's LLM category
+    description: str = ""  # caption (clean) or LLM description (super_clean); "" if neither
 
 
 @dataclass
@@ -27,27 +60,7 @@ class ProjectChunk:
     heading: str  # "" for the section before the first heading
     text: str
     chunk_id: str  # f"{project}:{doc_name}#{index}"
-
-
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Returns (fields, body). Hand-rolled to match exactly what
-    docling_pipeline._frontmatter/_yaml_str write - not a general YAML
-    parser, so no PyYAML dependency for this fixed, self-controlled schema."""
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        return {}, text
-    fields: dict = {}
-    for line in m.group(1).splitlines():
-        lm = _YAML_LINE_RE.match(line)
-        if not lm:
-            continue
-        key = lm.group(1)
-        if lm.group(2) is not None:
-            fields[key] = lm.group(2).replace('\\"', '"').replace("\\\\", "\\")
-        else:
-            raw = lm.group(3)
-            fields[key] = None if raw == "null" else raw
-    return fields, text[m.end():]
+    images: list[ImageRef] = field(default_factory=list)
 
 
 def _split_by_heading(body: str) -> list[tuple[str, str]]:
@@ -73,13 +86,43 @@ def _split_by_heading(body: str) -> list[tuple[str, str]]:
     return sections
 
 
-def iter_chunks(clean_dir: Path, project: str) -> list[ProjectChunk]:
-    project_dir = clean_dir / project
+def _extract_images(text: str, md_path: Path) -> list[ImageRef]:
+    """Find every "| ... | [file.png](link) | col_a | col_b |" table row in
+    this chunk's text and resolve it to an ImageRef. Handles both the
+    extraction layer's table (`| # | page | file | type | caption |`) and the
+    refinement layer's (`| # | file | category | description |`) without
+    caring which one it is: whatever trailing columns follow the image link
+    become category/description positionally. Table header/separator rows
+    naturally don't match (no real `[text](link)` in them)."""
+    images: list[ImageRef] = []
+    for row_match in _TABLE_ROW_RE.finditer(text):
+        cells = [c.strip() for c in row_match.group(1).split("|")]
+        link_idx = None
+        file_name = link_target = None
+        for i, cell in enumerate(cells):
+            link_match = _MD_LINK_RE.search(cell)
+            if link_match and link_match.group(2).lower().endswith(_IMAGE_SUFFIXES):
+                link_idx, file_name, link_target = i, link_match.group(1), link_match.group(2)
+                break
+        if link_idx is None:
+            continue
+        trailing = cells[link_idx + 1 :]
+        category = trailing[0] if len(trailing) >= 1 else ""
+        description = trailing[1] if len(trailing) >= 2 else ""
+        resolved = (md_path.parent / link_target).resolve()
+        images.append(
+            ImageRef(file=file_name, path=str(resolved), category=category, description=description)
+        )
+    return images
+
+
+def iter_chunks(source_dir: Path, project: str) -> list[ProjectChunk]:
+    project_dir = source_dir / project
     chunks: list[ProjectChunk] = []
     for path in sorted(project_dir.rglob("*.md")):
         if path.name == "_manifest.json":
             continue
-        fields, body = _parse_frontmatter(path.read_text())
+        fields, body = parse_frontmatter(path.read_text())
         if not fields:
             continue  # not a docling_pipeline output (e.g. a stray file)
         doc_name = path.relative_to(project_dir).as_posix()
@@ -95,6 +138,7 @@ def iter_chunks(clean_dir: Path, project: str) -> list[ProjectChunk]:
                     heading=heading,
                     text=text,
                     chunk_id=f"{project}:{doc_name}#{i}",
+                    images=_extract_images(text, path),
                 )
             )
     return chunks

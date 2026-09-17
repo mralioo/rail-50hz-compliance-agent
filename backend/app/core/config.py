@@ -80,12 +80,19 @@ class Settings(BaseSettings):
     prompts_dir: Path = BACKEND_ROOT / "app" / "agent" / "prompts"
 
     # --- Docling document-extraction service (dataset/raw -> clean Markdown +
-    # images; see app.ingestion.docling_pipeline). Runs the ML pipeline on a
-    # remote server so there is no local CPU cost. ---
+    # image artifacts; see app.application.documents). Runs the ML pipeline on
+    # a remote server so there is no local CPU cost. ---
     docling_base_url: str = "http://10.0.1.236/docling"
     docling_chunk_max_tokens: int = 512
     docling_images_scale: float = 2.0
     embedding_model: str = "intfloat/multilingual-e5-large"
+
+    # --- Refinement layer (dataset/clean -> dataset/super_clean; see
+    # app.application.documents.refine_pipeline). LLM-based OCR/repetition
+    # cleanup + image description/categorization, same remote server as
+    # Docling/embeddings, nginx-proxied at /generative/. ---
+    vllm_generative_base_url: str = "http://10.0.1.236/generative"
+    generative_model: str = "google/gemma-4-31B-it"
 
     cors_origins: list[str] = ["*"]
 
@@ -95,7 +102,12 @@ class Settings(BaseSettings):
     opensearch_enabled: bool = False
     opensearch_host: str = "http://localhost:9200"
     opensearch_index: str = "rail50hz_regulations"
-    opensearch_embedding_provider: Literal["local", "openai"] = "local"
+    opensearch_embedding_provider: Literal["local", "openai", "vllm"] = "local"
+    # "vllm" calls the remote embedding model (same one Docling/ITUKI use) over
+    # the network instead of loading a local model — no torch/API-key needed,
+    # but requires network access to this URL. Proxied via nginx the same way
+    # docling_base_url is (see app/adapters/documents/docling_client.py).
+    vllm_embeddings_base_url: str = "http://10.0.1.236/embeddings"
 
     neo4j_enabled: bool = False
     neo4j_uri: str = "bolt://localhost:7687"

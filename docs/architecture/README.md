@@ -40,15 +40,25 @@ composition root, equivalent to ITUKI's `backend/src/backend/bootstrap.py`.
 ## Bounded contexts
 
 One subfolder per bounded context under each of `domain/`, `adapters/`, `pipelines/` — same
-organizational style as `/home/alioo/Desktop/ITUC_repo/ITUKI_python` (its
-`domain/tendering` + `infrastructure/tendering` + `application/tendering` split), applied to
-this repo's actual features rather than that repo's. See `MIGRATION_MAP.md` for the full list
-and status; `cad` is migrated and is the reference example to copy for the rest:
+organizational style as ITUKI_python (its `domain/tendering` + `infrastructure/tendering` +
+`application/tendering` split), applied to this repo's actual features rather than that
+repo's (and its folder *name*, `infrastructure/` — this repo uses `adapters/`, see
+`MIGRATION_MAP.md`'s decision log). See `MIGRATION_MAP.md` for the full list and status;
+two contexts are built and are the reference examples to copy for the rest:
 
-- `app/domain/cad/ports.py` — `CadEnginePort`, `ParsedDrawing`, `EngineError`
-- `app/domain/cad/services.py` — `apply_edits` (pure domain logic on a `ParsedDrawing`)
-- `app/adapters/cad/{ezdxf,acadsharp,libredwg,qcad}_adapter.py` — one class per engine
-- `app/bootstrap.py::get_cad_engine(name)` — IoC: `?engine=` query param -> adapter instance
+- **`cad`** (migrated from a flat pre-existing module) —
+  `app/domain/cad/ports.py` (`CadEnginePort`, `ParsedDrawing`, `EngineError`),
+  `app/domain/cad/services.py` (`apply_edits` — pure domain logic on a `ParsedDrawing`),
+  `app/adapters/cad/{ezdxf,acadsharp,libredwg,qcad}_adapter.py` (one class per engine),
+  `app/bootstrap.py::get_cad_engine(name)` (IoC: `?engine=` query param -> adapter instance).
+- **`documents`** (new — no prior module, see `docs/DOCUMENT_EXTRACTION.md`) — the context
+  that also brought in the generic `app/pipelines/` engine (Pipeline/PipelineStep/
+  PipelineCursor — multi-step orchestration, reusable by any future context, not just this
+  one) and an `app/application/<context>/` + `app/application/shared_steps/` split for
+  pipeline assembly vs. the steps themselves. Domain ports:
+  `DocumentConversionClientPort`, `DocumentTextExtractionPort`, `FileStoragePort`
+  (`app/domain/documents/ports.py`); adapters: Docling HTTP + local-filesystem artifact
+  storage (`app/adapters/documents/`); wired via `app/bootstrap.py::get_document_*`.
 
 ## How to add a new adapter (e.g. a 5th CAD engine, or a new LLM provider)
 
